@@ -1,9 +1,17 @@
 import {
   createRule,
+  DefaultDeleteForbiddenError,
+  deleteRuleForShop,
+  DuplicateDefaultRuleError,
+  getRuleByIdForShop,
   listRulesByShop,
+  RuleNotFoundError,
+  setRuleEnabled,
+  updateRule,
   type DeliveryRuleWithTargets,
 } from "../repositories/deliveryRule.repository.server";
 import {
+  formatExcludedDaysLabel,
   serializeExcludedDays,
   serializeMessageParts,
 } from "../utils/delivery-dates";
@@ -24,7 +32,6 @@ export function isValidShopDomain(shop: string): boolean {
 export function normalizeShop(shop: string): string {
   return shop.trim().toLowerCase();
 }
-
 /**
  * Service layer for delivery rules — single source of truth for listing.
  * Enforces shop isolation and validation before hitting repository.
@@ -45,7 +52,6 @@ export async function getRulesForShop(
   try {
     return await listRulesByShop(normalized);
   } catch (error) {
-    // Log server-side, return meaningful error to caller
     console.error("[deliveryRule.service] Failed to fetch rules", {
       shop: normalized,
       error,
@@ -58,6 +64,7 @@ export type DisplayRule = DeliveryRuleWithTargets & {
   displayEta: string;
   displayTargets: string;
   displayTypeLabel: string;
+  displayExcluded: string;
 };
 
 /**
@@ -105,6 +112,15 @@ export async function createDeliveryRule(
       shop: normalized,
       error,
     });
+    if (error instanceof DuplicateDefaultRuleError) {
+      const err = new Error("Invalid rule data") as Error & {
+        fieldErrors?: Record<string, string>;
+      };
+      err.fieldErrors = {
+        type: "This shop already has a store-wide default rule. Edit it instead of creating another.",
+      };
+      throw err;
+    }
     // Preserve fieldErrors if already attached
     if ((error as { fieldErrors?: unknown }).fieldErrors) throw error;
     throw new Error("Failed to create delivery rule");
@@ -173,5 +189,191 @@ export function toDisplayRule(
     displayEta: formatEtaRange(rule.minDeliveryDays, rule.maxDeliveryDays),
     displayTargets: formatTargets(rule),
     displayTypeLabel: formatRuleTypeLabel(rule.type),
+    displayExcluded: formatExcludedDaysLabel(rule.excludedDays),
   };
+}
+
+/**
+ * Single rule for editing — ownership enforced, RuleNotFoundError
+ * bubbles so routes can answer 404.
+ */
+export async function getRuleForEdit(
+  shop: string,
+  id: string,
+): Promise<DeliveryRuleWithTargets> {
+  if (!shop || typeof shop !== "string") throw new Error("Shop is required");
+  const normalized = normalizeShop(shop);
+  if (!isValidShopDomain(normalized)) throw new Error("Invalid shop domain");
+
+  const rule = await getRuleByIdForShop(normalized, id);
+  if (!rule) throw new RuleNotFoundError(id);
+  return rule;
+}
+
+/**
+ * Update a rule plus its targets. Same validation as create; DEFAULT
+ * changes and target replacement are handled atomically in the repo.
+ * RuleNotFoundError bubbles so routes can answer 404.
+ */
+export async function updateDeliveryRule(
+  shop: string,
+  id: string,
+  rawInput: Partial<RuleFormInput>,
+): Promise<DeliveryRuleWithTargets> {
+  if (!shop || typeof shop !== "string") throw new Error("Shop is required");
+  const normalized = normalizeShop(shop);
+  if (!isValidShopDomain(normalized)) throw new Error("Invalid shop domain");
+  if (!id || typeof id !== "string") throw new Error("Rule ID is required");
+
+  const checked = validateRuleInput(rawInput);
+  if (!checked.valid || !checked.value) {
+    const err = new Error("Invalid rule data") as Error & {
+      fieldErrors?: typeof checked.errors;
+    };
+    err.fieldErrors = checked.errors;
+    throw err;
+  }
+  const v = checked.value;
+
+  try {
+    return await updateRule(normalized, id, {
+      name: v.name,
+      type: v.type,
+      processingDays: v.processingDays,
+      minDeliveryDays: v.minDeliveryDays,
+      maxDeliveryDays: v.maxDeliveryDays,
+      excludedDays: serializeExcludedDays(v.excludedDays),
+      customMessage: serializeMessageParts({
+        prefix: v.msgPrefix,
+        separator: v.msgSeparator,
+        suffix: v.msgSuffix,
+        dateStyle: v.dateStyle,
+      }),
+      enabled: v.enabled,
+      targetIds: v.targetIds,
+    });
+  } catch (error) {
+    console.error("[deliveryRule.service] Failed to update rule", {
+      shop: normalized,
+      id,
+      error,
+    });
+    if (error instanceof DuplicateDefaultRuleError) {
+      const err = new Error("Invalid rule data") as Error & {
+        fieldErrors?: Record<string, string>;
+      };
+      err.fieldErrors = {
+        type: "This shop already has a store-wide default rule.",
+      };
+      throw err;
+    }
+    if (error instanceof RuleNotFoundError) throw error;
+    if ((error as { fieldErrors?: unknown }).fieldErrors) throw error;
+    throw new Error("Failed to update delivery rule");
+  }
+}
+
+/**
+ * Delete a non-default rule with its targets (FK cascade).
+ * RuleNotFoundError and DefaultDeleteForbiddenError bubble so routes
+ * can answer with the right message; nothing else leaks.
+ */
+export async function deleteDeliveryRule(
+  shop: string,
+  id: string,
+): Promise<{ id: string; name: string }> {
+  if (!shop || typeof shop !== "string") throw new Error("Shop is required");
+  const normalized = normalizeShop(shop);
+  if (!isValidShopDomain(normalized)) throw new Error("Invalid shop domain");
+  if (!id || typeof id !== "string") throw new Error("Rule ID is required");
+
+  try {
+    return await deleteRuleForShop(normalized, id);
+  } catch (error) {
+    console.error("[deliveryRule.service] Failed to delete rule", {
+      shop: normalized,
+      id,
+      error,
+    });
+    if (
+      error instanceof RuleNotFoundError ||
+      error instanceof DefaultDeleteForbiddenError
+    ) {
+      throw error;
+    }
+    throw new Error("Failed to delete delivery rule");
+  }
+}
+
+/**
+ * Duplicate a PRODUCT/COLLECTION rule with its targets, as an exact
+ * copy named "<name> copy". The DEFAULT rule cannot be duplicated.
+ * Single create call, so rule + targets persist atomically.
+ */
+export async function duplicateDeliveryRule(
+  shop: string,
+  id: string,
+): Promise<DeliveryRuleWithTargets> {
+  if (!shop || typeof shop !== "string") throw new Error("Shop is required");
+  const normalized = normalizeShop(shop);
+  if (!isValidShopDomain(normalized)) throw new Error("Invalid shop domain");
+  if (!id || typeof id !== "string") throw new Error("Rule ID is required");
+
+  const source = await getRuleByIdForShop(normalized, id);
+  if (!source) throw new RuleNotFoundError(id);
+  if (source.type === "DEFAULT") throw new DuplicateDefaultRuleError(normalized);
+
+  const baseName =
+    source.name.length > 94 ? source.name.slice(0, 94).trimEnd() : source.name;
+
+  try {
+    return await createRule({
+      shop: normalized,
+      name: `${baseName} copy`,
+      type: source.type,
+      processingDays: source.processingDays,
+      minDeliveryDays: source.minDeliveryDays,
+      maxDeliveryDays: source.maxDeliveryDays,
+      excludedDays: source.excludedDays,
+      customMessage: source.customMessage,
+      enabled: source.enabled,
+      targetIds: source.targets.map((t) => t.targetId),
+    });
+  } catch (error) {
+    console.error("[deliveryRule.service] Failed to duplicate rule", {
+      shop: normalized,
+      id,
+      error,
+    });
+    if (error instanceof DuplicateDefaultRuleError) throw error;
+    throw new Error("Failed to duplicate delivery rule");
+  }
+}
+
+/**
+ * Flip only the enabled flag. Returns the fresh rule so callers show
+ * server truth instead of optimistic state.
+ */
+export async function setRuleEnabledState(
+  shop: string,
+  id: string,
+  enabled: boolean,
+): Promise<DeliveryRuleWithTargets> {
+  if (!shop || typeof shop !== "string") throw new Error("Shop is required");
+  const normalized = normalizeShop(shop);
+  if (!isValidShopDomain(normalized)) throw new Error("Invalid shop domain");
+  if (!id || typeof id !== "string") throw new Error("Rule ID is required");
+  if (typeof enabled !== "boolean") throw new Error("Enabled must be boolean");
+
+  try {
+    return await setRuleEnabled(normalized, id, enabled);
+  } catch (error) {
+    console.error("[deliveryRule.service] Failed to toggle rule", {
+      shop: normalized,
+      id,
+      error,
+    });
+    if (error instanceof RuleNotFoundError) throw error;
+    throw new Error("Failed to update rule status");
+  }
 }

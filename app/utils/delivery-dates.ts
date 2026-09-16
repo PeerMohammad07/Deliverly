@@ -1,9 +1,3 @@
-/**
- * Pure delivery-date utilities.
- * Single source of truth for business-day math, reusable from
- * admin preview, storefront estimate endpoint, and future API consumers.
- */
-
 export const DAY_SUNDAY = 0;
 export const DAY_SATURDAY = 6;
 
@@ -149,9 +143,35 @@ export function formatDeliveryDays(workingDays: number[]): string {
 }
 
 /**
+ * Table-friendly "Excluded days" label from the stored value:
+ * "None" when everything delivers, otherwise "Sat, Sun".
+ */
+export function formatExcludedDaysLabel(
+  excludedDays: Set<number> | number[] | string | undefined,
+): string {
+  const excluded =
+    excludedDays instanceof Set
+      ? excludedDays
+      : parseExcludedDays(excludedDays ?? []);
+  if (excluded.size === 0) return "None";
+  return [...excluded]
+    .sort((a, b) => a - b)
+    .map((day) => SHORT_DAY_NAMES[day])
+    .join(", ");
+}
+
+/**
  * Add N business days to a date, skipping excluded weekdays.
- * - 0 days returns the start date rolled forward if it falls on an excluded day.
- * - Negative values throw.
+ *
+ * Explicit contract:
+ * - The start date is first rolled forward to the next working day when
+ *   it lands on an excluded day. So 0 days means "today if we operate
+ *   today, otherwise the next operating day" — NOT unconditionally today.
+ *   Example: Saturday start + Sat/Sun excluded + 0 days → Monday.
+ * - N > 0 counts only working days after that rolled-forward start.
+ * - Negative or non-integer values throw.
+ * - A fully excluded week (all 7 days) throws instead of returning a
+ *   silently wrong date — there is no working day to land on.
  */
 export function addBusinessDays(
   from: Date,
@@ -161,9 +181,15 @@ export function addBusinessDays(
   if (!Number.isInteger(businessDays) || businessDays < 0) {
     throw new Error("businessDays must be a non-negative integer");
   }
+  if (excludedDays.size >= 7) {
+    throw new Error(
+      "At least one working day is required (all 7 days are excluded)",
+    );
+  }
   const current = startOfDay(from);
 
-  // Roll forward if start lands on excluded day
+  // Roll forward if start lands on excluded day (see contract above).
+  // Bounded: with at least one working day, 14 steps always suffice.
   let guard = 0;
   while (isExcluded(current, excludedDays) && guard < 14) {
     current.setDate(current.getDate() + 1);
@@ -192,6 +218,10 @@ export interface CalculateRangeInput {
 
 /**
  * Order date → processing → shipping → working-day calculation → ETA range.
+ *
+ * Zero-day contract (inherited from addBusinessDays): 0 processing days
+ * means "ready today if we operate today, otherwise the next operating
+ * day". A fully excluded week is rejected up front — see below.
  */
 export function calculateDeliveryRange(input: CalculateRangeInput): DeliveryRange {
   const {
@@ -219,6 +249,12 @@ export function calculateDeliveryRange(input: CalculateRangeInput): DeliveryRang
       ? input.excludedDays
       : parseExcludedDays(input.excludedDays ?? [DAY_SUNDAY, DAY_SATURDAY]);
 
+  if (deriveWorkingDays(excluded).length === 0) {
+    throw new Error(
+      "At least one working day is required (all 7 days are excluded)",
+    );
+  }
+
   const readyDate = addBusinessDays(from, processingDays, excluded);
   const minDate = addBusinessDays(readyDate, minShippingDays, excluded);
   const maxDate = addBusinessDays(readyDate, maxShippingDays, excluded);
@@ -238,6 +274,18 @@ function ordinalSuffix(day: number): string {
     default:
       return "th";
   }
+}
+
+/**
+ * Serialize a calculator Date as calendar-day YYYY-MM-DD using LOCAL
+ * date parts (not toISOString): the calculator works in day units, so
+ * UTC conversion could shift the storefront date across midnight.
+ */
+export function toDateOnlyString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 /**

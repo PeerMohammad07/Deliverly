@@ -35,6 +35,17 @@ const MAX_SEPARATOR_LENGTH = 10;
 const MAX_SUFFIX_LENGTH = 200;
 export const MAX_TARGETS = 50;
 
+const PRODUCT_GID_PATTERN = /^gid:\/\/shopify\/Product\/\S+$/;
+const COLLECTION_GID_PATTERN = /^gid:\/\/shopify\/Collection\/\S+$/;
+
+export function isProductGid(value: unknown): value is string {
+  return typeof value === "string" && PRODUCT_GID_PATTERN.test(value);
+}
+
+export function isCollectionGid(value: unknown): value is string {
+  return typeof value === "string" && COLLECTION_GID_PATTERN.test(value);
+}
+
 function isIntInRange(value: unknown, min: number, max: number): boolean {
   return (
     typeof value === "number" &&
@@ -150,6 +161,7 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
     : [];
 
   if (type === "PRODUCT" || type === "COLLECTION") {
+    const isKindGid = type === "PRODUCT" ? isProductGid : isCollectionGid;
     if (targetIds.length === 0) {
       errors.targetIds =
         type === "PRODUCT"
@@ -159,6 +171,13 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
       errors.targetIds = `You can add up to ${MAX_TARGETS} targets per rule.`;
     } else if (targetIds.some((t) => t.length > 120)) {
       errors.targetIds = "One of the IDs looks too long.";
+    } else if (targetIds.some((t) => !isKindGid(t))) {
+      // The picker always returns GIDs — anything else is tampered input.
+      // This also guarantees targetType matches the rule type.
+      errors.targetIds =
+        type === "PRODUCT"
+          ? "Each product must be a valid product ID."
+          : "Each collection must be a valid collection ID.";
     }
   }
 
