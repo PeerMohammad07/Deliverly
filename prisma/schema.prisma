@@ -14,21 +14,63 @@ datasource db {
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+}
+
+model DeliveryRule {
+  id              String       @id @default(cuid())
+  shop            String
+  name            String
+  type            RuleType
+  minDeliveryDays Int
+  maxDeliveryDays Int
+  processingDays  Int
+  excludedDays    String
+  customMessage   String
+  enabled         Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  targets         RuleTarget[]
+
+  @@index([shop])
+  @@index([shop, type])
+}
+
+model RuleTarget {
+  id         String       @id @default(cuid())
+  ruleId     String
+  targetType TargetType
+  targetId   String
+  rule       DeliveryRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@index([ruleId])
+}
+
+enum RuleType {
+  DEFAULT
+  PRODUCT
+  COLLECTION
+}
+
+enum TargetType {
+  PRODUCT
+  COLLECTION
 }
