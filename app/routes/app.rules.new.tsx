@@ -60,20 +60,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     await createDeliveryRule(shop, checked.value);
-    return redirect("/app/rules");
+    return redirect("/app/rules?notice=created");
   } catch (error) {
     console.error("[app.rules.new] create failed", { shop, error });
     const fieldErrors =
       (error as { fieldErrors?: RuleFormErrors }).fieldErrors ?? {};
+    const validationFailure = Object.keys(fieldErrors).length > 0;
     return data<RuleFormActionData>(
       {
-        errors:
-          Object.keys(fieldErrors).length > 0
-            ? fieldErrors
-            : { name: "Couldn’t save this rule. Try again." },
+        errors: validationFailure
+          ? fieldErrors
+          : {},
+        formError: validationFailure
+          ? undefined
+          : "Something went wrong while saving. Try again.",
         values: actionValues(formData),
       },
-      { status: 400 },
+      { status: validationFailure ? 400 : 500 },
     );
   }
 };

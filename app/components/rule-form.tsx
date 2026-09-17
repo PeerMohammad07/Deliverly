@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useActionData, useNavigation, useSubmit } from "react-router";
+import {
+  Link,
+  useActionData,
+  useNavigate,
+  useNavigation,
+  useSubmit,
+} from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import {
   MAX_TARGETS,
@@ -24,6 +30,7 @@ import {
 export interface RuleFormActionData {
   errors: RuleFormErrors;
   values: Record<string, string>;
+  formError?: string;
 }
 
 export interface RuleTargetPick {
@@ -110,16 +117,25 @@ export function RuleForm({
   labels: RuleFormLabels;
 }) {
   const actionData = useActionData<RuleFormActionData | undefined>();
+  const navigate = useNavigate();
   const navigation = useNavigation();
   const submit = useSubmit();
   const shopify = useAppBridge();
-  const isSaving = navigation.state !== "idle";
+  const isSaving =
+    navigation.state !== "idle" &&
+    navigation.formMethod?.toLowerCase() === "post";
+  const isRedirectingAfterSave =
+    navigation.state === "loading" &&
+    navigation.formMethod?.toLowerCase() === "post";
 
-  const serverErrors = actionData?.errors ?? {};
   const serverValues = actionData?.values;
   // Client-side mirror of server validation (same function, same rules).
   // Catches mistakes instantly with highlights — no spinner flash for
   // fixable errors. The server always re-validates as source of truth.
+  const [serverErrors, setServerErrors] = useState<RuleFormErrors>(
+    actionData?.errors ?? {},
+  );
+  const [formError, setFormError] = useState(actionData?.formError);
   const [clientErrors, setClientErrors] = useState<RuleFormErrors>({});
   const errors = useMemo(
     () => ({ ...serverErrors, ...clientErrors }),
@@ -170,15 +186,17 @@ export function RuleForm({
   // Real product photo lives at public/preview-chair.jpg.
   const [imgOk, setImgOk] = useState(true);
 
-  const saveBarRef = useRef<
-    (HTMLElement & { show: () => void; hide: () => void }) | null
-  >(null);
+  const toastedActionData = useRef<RuleFormActionData | undefined>(undefined);
+  const lastClientValidationToastAt = useRef(0);
 
   const initialSnapshot = useRef(
     JSON.stringify({
       name: initial.name,
       type: initial.type,
-      targetIds: initial.targets.map((t) => t.id).join(","),
+      targetIds: initial.targets
+        .map((t) => t.id)
+        .sort()
+        .join(","),
       processingDays: initial.processingDays,
       minDays: initial.minDeliveryDays,
       maxDays: initial.maxDeliveryDays,
@@ -194,7 +212,10 @@ export function RuleForm({
   const currentSnapshot = JSON.stringify({
     name,
     type,
-    targetIds: selectedTargets.map((t) => t.id).join(","),
+    targetIds: selectedTargets
+      .map((t) => t.id)
+      .sort()
+      .join(","),
     processingDays,
     minDays,
     maxDays,
@@ -206,35 +227,39 @@ export function RuleForm({
     enabled,
   });
   const isDirty = currentSnapshot !== initialSnapshot.current;
+  const showSaveBar = isDirty && !isRedirectingAfterSave;
 
-  // The bar only ever mounts when there is something to save, so it
-  // can never flash on page load. The unmount cleanup is critical:
-  // App Bridge keeps a global save bar, and without an explicit hide()
-  // it stays stuck open (with dead buttons) after navigating away.
-  // Both the element and the global API are hidden — whichever owns
-  // the visible bar releases it.
   useEffect(() => {
-    const bar = saveBarRef.current;
-    bar?.show();
+    const action = showSaveBar
+      ? shopify.saveBar.show("rule-form-save-bar")
+      : shopify.saveBar.hide("rule-form-save-bar");
+    action.catch((error) => {
+      console.warn("[rule-form] save bar update failed", error);
+    });
+  }, [shopify, showSaveBar]);
+
+  useEffect(() => {
     return () => {
-      try {
-        bar?.hide();
-      } catch {
-        // Element already gone — nothing to hide.
-      }
-      shopify.saveBar
-        .hide("rule-form-save-bar")
-        .catch(() => undefined);
-    };
-  }, [isDirty, isSaving, shopify]);
-
-  // Failed saves surface as a native error toast; the fields
-  // themselves still carry inline errors. No banner needed.
-  useEffect(() => {
-    if (actionData && Object.keys(actionData.errors).length > 0) {
-      shopify.toast.show("Couldn’t save — check the highlighted fields.", {
-        isError: true,
+      shopify.saveBar.hide("rule-form-save-bar").catch((error) => {
+        console.warn("[rule-form] save bar cleanup failed", error);
       });
+    };
+  }, [shopify]);
+
+  useEffect(() => {
+    setServerErrors(actionData?.errors ?? {});
+    setFormError(actionData?.formError);
+    if (
+      actionData &&
+      toastedActionData.current !== actionData &&
+      (actionData.formError || Object.keys(actionData.errors).length > 0)
+    ) {
+      toastedActionData.current = actionData;
+      shopify.toast.show(
+        actionData.formError ??
+          "Couldn’t save — check the highlighted fields.",
+        { isError: true },
+      );
     }
   }, [actionData, shopify]);
 
@@ -298,6 +323,13 @@ export function RuleForm({
     setPickerError(null);
   }
 
+  function removeTarget(id: string) {
+    setSelectedTargets((targets) =>
+      targets.filter((target) => target.id !== id),
+    );
+    setPickerError(null);
+  }
+
   async function openPicker() {
     const resourcePicker = window.shopify?.resourcePicker;
     if (!resourcePicker) {
@@ -332,7 +364,8 @@ export function RuleForm({
             })),
         );
       }
-    } catch {
+    } catch (error) {
+      console.error("[rule-form] resource picker failed", error);
       setPickerError("Couldn’t open the picker. Try again.");
     }
   }
@@ -359,9 +392,13 @@ export function RuleForm({
     const checked = validateRuleInput(parseRuleFormData(fd));
     if (!checked.valid) {
       setClientErrors(checked.errors);
-      shopify.toast.show("Couldn’t save — check the highlighted fields.", {
-        isError: true,
-      });
+      const now = Date.now();
+      if (now - lastClientValidationToastAt.current > 750) {
+        lastClientValidationToastAt.current = now;
+        shopify.toast.show("Couldn’t save — check the highlighted fields.", {
+          isError: true,
+        });
+      }
       return;
     }
     setClientErrors({});
@@ -369,9 +406,15 @@ export function RuleForm({
   }
 
   // Fresh keystrokes clear stale client errors as the merchant fixes them.
-  // Server errors persist until the next server response.
+  const fieldChangeStarted = useRef(false);
   useEffect(() => {
+    if (!fieldChangeStarted.current) {
+      fieldChangeStarted.current = true;
+      return;
+    }
     setClientErrors({});
+    setServerErrors({});
+    setFormError(undefined);
   }, [
     name,
     type,
@@ -397,12 +440,25 @@ export function RuleForm({
     doSave();
   }
 
+  async function handleBackClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    e.preventDefault();
+    try {
+      await shopify.saveBar.leaveConfirmation();
+      void navigate("/app/rules");
+    } catch (error) {
+      console.debug("[rule-form] navigation cancelled", error);
+    }
+  }
+
   function handleResetClick(e: React.MouseEvent) {
     e.preventDefault();
     handleReset();
   }
 
   function handleReset() {
+    setClientErrors({});
+    setServerErrors({});
+    setFormError(undefined);
     setName(initial.name);
     setType(initial.type);
     setSelectedTargets(initial.targets);
@@ -432,15 +488,26 @@ export function RuleForm({
 
   return (
     <>
-      {isDirty || isSaving ? (
-        <ui-save-bar ref={saveBarRef} id="rule-form-save-bar">
-          {/* variant is an App Bridge save-bar button API prop */}
-          <button variant="primary" onClick={handleSaveClick}></button>
-          <button onClick={handleResetClick}></button>
-        </ui-save-bar>
-      ) : null}
+      <ui-save-bar id="rule-form-save-bar">
+        {/* variant is an App Bridge save-bar button API prop */}
+        <button
+          variant="primary"
+          aria-label="Save rule"
+          disabled={isSaving}
+          onClick={handleSaveClick}
+        ></button>
+        <button
+          aria-label="Discard changes"
+          disabled={isSaving}
+          onClick={handleResetClick}
+        ></button>
+      </ui-save-bar>
 
-      <form onSubmit={handleSaveForm} onReset={handleReset}>
+      <form
+        onSubmit={handleSaveForm}
+        onReset={handleReset}
+        aria-busy={isSaving}
+      >
         <s-page>
           <s-stack direction="block" gap="base">
             <s-stack direction="block" gap="small-200">
@@ -448,6 +515,7 @@ export function RuleForm({
                 <Link
                   to="/app/rules"
                   aria-label="Back to ETA rules"
+                  onClick={handleBackClick}
                   style={{
                     display: "inline-flex",
                     lineHeight: 0,
@@ -475,13 +543,10 @@ export function RuleForm({
               <s-paragraph color="subdued">{labels.subtitle}</s-paragraph>
             </s-stack>
 
-            {isSaving ? (
-              <s-stack direction="inline" gap="small-200" alignItems="center">
-                <s-spinner accessibilityLabel="Saving your rule" />
-                <s-paragraph color="subdued">
-                  Saving your rule…
-                </s-paragraph>
-              </s-stack>
+            {formError ? (
+              <s-banner heading="Couldn’t save this rule" tone="critical">
+                {formError}
+              </s-banner>
             ) : null}
 
             <s-grid
@@ -596,66 +661,72 @@ export function RuleForm({
                       </s-stack>
                     ) : (
                       <s-stack direction="block" gap="small-200">
-                        {selectedTargets.length > 0 ? (
-                          <>
-                            <s-stack
-                              direction="inline"
-                              gap="small-200"
-                              alignItems="center"
-                              justifyContent="space-between"
-                            >
-                              <s-text type="strong">
-                                {selectedTargets.length === 1
-                                  ? type === "PRODUCT"
-                                    ? "1 product selected"
-                                    : "1 collection selected"
-                                  : type === "PRODUCT"
-                                    ? `${selectedTargets.length} products selected`
-                                    : `${selectedTargets.length} collections selected`}
-                              </s-text>
-                              <s-button
-                                type="button"
-                                variant="tertiary"
-                                onClick={openPicker}
-                              >
-                                Edit
-                              </s-button>
-                            </s-stack>
-                            <s-unordered-list>
-                              {selectedTargets.map((t) => (
-                                <s-list-item key={t.id}>
-                                  <s-paragraph>{t.title}</s-paragraph>
-                                </s-list-item>
-                              ))}
-                            </s-unordered-list>
-                          </>
-                        ) : (
-                          <>
-                            <s-stack direction="inline" gap="small-200">
-                              <s-button
-                                type="button"
-                                variant="secondary"
-                                icon={
-                                  type === "PRODUCT" ? "product" : "collection"
-                                }
-                                onClick={openPicker}
-                              >
-                                {type === "PRODUCT"
-                                  ? "Browse products"
-                                  : "Browse collections"}
-                              </s-button>
-                            </s-stack>
-                            <s-text type="strong">
-                              {type === "PRODUCT"
+                        <s-stack
+                          direction="inline"
+                          gap="small-200"
+                          alignItems="center"
+                          justifyContent="space-between"
+                        >
+                          <s-text type="strong">
+                            {selectedTargets.length === 0
+                              ? type === "PRODUCT"
                                 ? "No products selected"
-                                : "No collections selected"}
-                            </s-text>
-                            <s-paragraph color="subdued">
-                              {type === "PRODUCT"
-                                ? "Choose the products this delivery rule should apply to."
-                                : "Choose the collections this delivery rule should apply to."}
-                            </s-paragraph>
-                          </>
+                                : "No collections selected"
+                              : selectedTargets.length === 1
+                                ? type === "PRODUCT"
+                                  ? "1 product selected"
+                                  : "1 collection selected"
+                                : type === "PRODUCT"
+                                  ? `${selectedTargets.length} products selected`
+                                  : `${selectedTargets.length} collections selected`}
+                          </s-text>
+                          <s-button
+                            type="button"
+                            variant="secondary"
+                            icon={
+                              type === "PRODUCT" ? "product" : "collection"
+                            }
+                            onClick={openPicker}
+                          >
+                            {type === "PRODUCT"
+                              ? "Select products"
+                              : "Select collections"}
+                          </s-button>
+                        </s-stack>
+                        {selectedTargets.length > 0 ? (
+                          <s-stack direction="block" gap="small-100">
+                            {selectedTargets.map((target) => (
+                              <s-box
+                                key={target.id}
+                                border="base"
+                                borderRadius="base"
+                                padding="small"
+                                background="base"
+                              >
+                                <s-grid
+                                  gridTemplateColumns="minmax(0, 1fr) auto"
+                                  gap="small-200"
+                                  alignItems="center"
+                                >
+                                  <s-paragraph>{target.title}</s-paragraph>
+                                  <s-button
+                                    type="button"
+                                    variant="tertiary"
+                                    tone="critical"
+                                    icon="delete"
+                                    accessibilityLabel={`Remove ${target.title}`}
+                                    onClick={() => removeTarget(target.id)}
+                                  />
+                                </s-grid>
+                              </s-box>
+                            ))}
+                          </s-stack>
+                        ) : (
+                          <s-paragraph color="subdued">
+                            {type === "PRODUCT"
+                              ? "Choose the products this delivery rule should apply to."
+                              : "Choose the collections this delivery rule should apply to."}
+                          </s-paragraph>
                         )}
                         {pickerError ? (
                           <s-paragraph tone="critical">
@@ -772,7 +843,7 @@ export function RuleForm({
                     </div>
                     {errors.excludedDays ? (
                       <s-paragraph tone="critical">
-                        {serverErrors.excludedDays}
+                        {errors.excludedDays}
                       </s-paragraph>
                     ) : null}
                     <s-paragraph color="subdued">

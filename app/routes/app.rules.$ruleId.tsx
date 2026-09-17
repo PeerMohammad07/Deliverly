@@ -132,7 +132,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     enabled: rule.enabled,
   };
 
-  return { initial };
+  return { initial, ruleId: id };
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -159,31 +159,43 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   try {
     await updateDeliveryRule(shop, id, checked.value);
-    return redirect("/app/rules");
+    return redirect("/app/rules?notice=updated");
   } catch (error) {
     if (error instanceof RuleNotFoundError) {
-      throw new Response("Rule not found", { status: 404 });
+      return data<RuleFormActionData>(
+        {
+          errors: {},
+          formError:
+            "This rule no longer exists. Return to the rules list and try again.",
+          values: actionValues(formData),
+        },
+        { status: 404 },
+      );
     }
     console.error("[app.rules.$ruleId] update failed", { shop, id, error });
     const fieldErrors =
       (error as { fieldErrors?: RuleFormErrors }).fieldErrors ?? {};
+    const validationFailure = Object.keys(fieldErrors).length > 0;
     return data<RuleFormActionData>(
       {
-        errors:
-          Object.keys(fieldErrors).length > 0
-            ? fieldErrors
-            : { name: "Couldn’t save this rule. Try again." },
+        errors: validationFailure
+          ? fieldErrors
+          : {},
+        formError: validationFailure
+          ? undefined
+          : "Something went wrong while saving. Try again.",
         values: actionValues(formData),
       },
-      { status: 400 },
+      { status: validationFailure ? 400 : 500 },
     );
   }
 };
 
 export default function EditEtaRulePage() {
-  const { initial } = useLoaderData<typeof loader>();
+  const { initial, ruleId } = useLoaderData<typeof loader>();
   return (
     <RuleForm
+      key={ruleId}
       initial={initial}
       labels={{
         title: "Edit rule",
