@@ -26,6 +26,10 @@ import {
   parseExcludedDays,
   type StorefrontDateStyle,
 } from "../utils/delivery-dates";
+import { DeliveryTimingSections } from "./rule-form/delivery-timing-sections";
+import { StorefrontMessageSection } from "./rule-form/storefront-message-section";
+import { StorefrontPreview } from "./rule-form/storefront-preview";
+import { TargetSelectionSection } from "./rule-form/target-selection-section";
 
 export interface RuleFormActionData {
   errors: RuleFormErrors;
@@ -33,7 +37,7 @@ export interface RuleFormActionData {
   formError?: string;
 }
 
-export interface RuleTargetPick {
+interface RuleTargetPick {
   id: string;
   title: string;
 }
@@ -53,20 +57,10 @@ export interface RuleFormInitial {
   enabled: boolean;
 }
 
-export interface RuleFormLabels {
+interface RuleFormLabels {
   title: string;
   subtitle: string;
 }
-
-const WEEKDAYS = [
-  { value: 0, short: "Sun" },
-  { value: 1, short: "Mon" },
-  { value: 2, short: "Tue" },
-  { value: 3, short: "Wed" },
-  { value: 4, short: "Thu" },
-  { value: 5, short: "Fri" },
-  { value: 6, short: "Sat" },
-];
 
 function getInputValue(e: unknown): string {
   const target = (e as { target?: { value?: unknown } })?.target;
@@ -81,15 +75,10 @@ function toInt(value: string, fallback: number): number {
   return Number.isInteger(n) ? n : fallback;
 }
 
-interface PickedTarget {
-  id: string;
-  title: string;
-}
-
 /** Single source for the picker cap — matches MAX_TARGETS in validation. */
 const MAX_PICKER_TARGETS = MAX_TARGETS;
 
-function initTargets(raw: string | undefined): PickedTarget[] {
+function initTargets(raw: string | undefined): RuleTargetPick[] {
   if (!raw) return [];
   return raw
     .split(/[\n,]+/)
@@ -146,7 +135,7 @@ export function RuleForm({
   const [type, setType] = useState<RuleTypeInput>(() =>
     actionData ? initType(serverValues?.type) : initial.type,
   );
-  const [selectedTargets, setSelectedTargets] = useState<PickedTarget[]>(
+  const [selectedTargets, setSelectedTargets] = useState<RuleTargetPick[]>(
     () => (actionData ? initTargets(serverValues?.targetIds) : initial.targets),
   );
   const [pickerError, setPickerError] = useState<string | null>(null);
@@ -183,8 +172,6 @@ export function RuleForm({
   const [enabled, setEnabled] = useState(
     actionData ? serverValues?.enabled !== "false" : initial.enabled,
   );
-  // Real product photo lives at public/preview-chair.jpg.
-  const [imgOk, setImgOk] = useState(true);
 
   const toastedActionData = useRef<RuleFormActionData | undefined>(undefined);
   const lastClientValidationToastAt = useRef(0);
@@ -256,8 +243,7 @@ export function RuleForm({
     ) {
       toastedActionData.current = actionData;
       shopify.toast.show(
-        actionData.formError ??
-          "Couldn’t save — check the highlighted fields.",
+        actionData.formError ?? "Couldn’t save — check the highlighted fields.",
         { isError: true },
       );
     }
@@ -295,7 +281,9 @@ export function RuleForm({
     : "";
   const etaText = previewDates.ok
     ? composeDeliveryMessage(messageParts, etaMinStr, etaMaxStr)
-    : "Get Estimated delivery —";
+    : "Estimated delivery between —";
+  const etaSuffix = msgSuffix.trim();
+  const etaSuffixSpace = etaSuffix && !/^[,.;:!?]/.test(etaSuffix) ? " " : "";
 
   const deliveryDaysLabel = useMemo(
     () => formatDeliveryDays(deriveWorkingDays(excluded)),
@@ -528,15 +516,15 @@ export function RuleForm({
                   <s-icon type="arrow-left" size="base" />
                 </Link>
                 <h1
-                style={{
-                  margin: "0",
-                  fontSize: "20px",
-                  fontWeight: 700,
-                  lineHeight: "28px",
-                  letterSpacing: "-0.02em",
-                  color: "#202223",
-                }}
-              >
+                  style={{
+                    margin: "0",
+                    fontSize: "20px",
+                    fontWeight: 700,
+                    lineHeight: "28px",
+                    letterSpacing: "-0.02em",
+                    color: "#202223",
+                  }}
+                >
                   {labels.title}
                 </h1>
               </s-stack>
@@ -591,572 +579,65 @@ export function RuleForm({
                   </s-stack>
                 </s-section>
 
-                <s-section heading="Targets">
-                  <s-stack direction="block" gap="base">
-                    <s-select
-                      label="Applies to"
-                      name="type"
-                      value={type}
-                      error={errors.type}
-                      onChange={(e: unknown) =>
-                        handleTypeChange(getInputValue(e) as RuleTypeInput)
-                      }
-                    >
-                      <s-option value="DEFAULT">All products</s-option>
-                      <s-option value="PRODUCT">Specific products</s-option>
-                      <s-option value="COLLECTION">
-                        Specific collections
-                      </s-option>
-                    </s-select>
-                    {type === "DEFAULT" ? (
-                      <s-stack direction="block" gap="small-200">
-                        <s-box
-                          border="base"
-                          borderRadius="base"
-                          background="base"
-                          padding="small"
-                        >
-                          <s-stack
-                            direction="inline"
-                            gap="small-200"
-                            alignItems="center"
-                            justifyContent="space-between"
-                          >
-                            <span
-                              style={{
-                                fontSize: "14px",
-                                fontWeight: 600,
-                                color: "#202223",
-                              }}
-                            >
-                              All products
-                            </span>
-                            <s-badge tone="success">Selected</s-badge>
-                          </s-stack>
-                        </s-box>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "8px",
-                            alignItems: "flex-start",
-                          }}
-                        >
-                          <span
-                            style={{
-                              flexShrink: 0,
-                              display: "inline-flex",
-                              paddingTop: "2px",
-                            }}
-                          >
-                            <s-icon type="info" size="small" />
-                          </span>
-                          <span style={{ flex: "1 1 auto", minWidth: 0 }}>
-                            <s-paragraph color="subdued">
-                              This default rule applies to all products without
-                              a more specific rule. Priority: Product →
-                              Collection → Default.
-                            </s-paragraph>
-                          </span>
-                        </div>
-                      </s-stack>
-                    ) : (
-                      <s-stack direction="block" gap="small-200">
-                        <s-stack
-                          direction="inline"
-                          gap="small-200"
-                          alignItems="center"
-                          justifyContent="space-between"
-                        >
-                          <s-text type="strong">
-                            {selectedTargets.length === 0
-                              ? type === "PRODUCT"
-                                ? "No products selected"
-                                : "No collections selected"
-                              : selectedTargets.length === 1
-                                ? type === "PRODUCT"
-                                  ? "1 product selected"
-                                  : "1 collection selected"
-                                : type === "PRODUCT"
-                                  ? `${selectedTargets.length} products selected`
-                                  : `${selectedTargets.length} collections selected`}
-                          </s-text>
-                          <s-button
-                            type="button"
-                            variant="secondary"
-                            icon={
-                              type === "PRODUCT" ? "product" : "collection"
-                            }
-                            onClick={openPicker}
-                          >
-                            {type === "PRODUCT"
-                              ? "Select products"
-                              : "Select collections"}
-                          </s-button>
-                        </s-stack>
-                        {selectedTargets.length > 0 ? (
-                          <s-stack direction="block" gap="small-100">
-                            {selectedTargets.map((target) => (
-                              <s-box
-                                key={target.id}
-                                border="base"
-                                borderRadius="base"
-                                padding="small"
-                                background="base"
-                              >
-                                <s-grid
-                                  gridTemplateColumns="minmax(0, 1fr) auto"
-                                  gap="small-200"
-                                  alignItems="center"
-                                >
-                                  <s-paragraph>{target.title}</s-paragraph>
-                                  <s-button
-                                    type="button"
-                                    variant="tertiary"
-                                    tone="critical"
-                                    icon="delete"
-                                    accessibilityLabel={`Remove ${target.title}`}
-                                    onClick={() => removeTarget(target.id)}
-                                  />
-                                </s-grid>
-                              </s-box>
-                            ))}
-                          </s-stack>
-                        ) : (
-                          <s-paragraph color="subdued">
-                            {type === "PRODUCT"
-                              ? "Choose the products this delivery rule should apply to."
-                              : "Choose the collections this delivery rule should apply to."}
-                          </s-paragraph>
-                        )}
-                        {pickerError ? (
-                          <s-paragraph tone="critical">
-                            {pickerError}
-                          </s-paragraph>
-                        ) : null}
-                        {errors.targetIds ? (
-                          <s-paragraph tone="critical">
-                            {errors.targetIds}
-                          </s-paragraph>
-                        ) : null}
-                      </s-stack>
-                    )}
-                  </s-stack>
-                </s-section>
+                <TargetSelectionSection
+                  type={type}
+                  selectedTargets={selectedTargets}
+                  pickerError={pickerError}
+                  errors={errors}
+                  onTypeChange={(event) =>
+                    handleTypeChange(getInputValue(event) as RuleTypeInput)
+                  }
+                  onOpenPicker={openPicker}
+                  onRemoveTarget={removeTarget}
+                />
 
-                <s-section heading="Delivery timing">
-                  <s-stack direction="block" gap="base">
-                    <s-paragraph color="subdued">
-                      Ticked days below are skipped.
-                    </s-paragraph>
-                    <s-grid
-                      gridTemplateColumns="@container (inline-size <= 560px) 1fr, 1fr 1fr 1fr"
-                      gap="base"
-                    >
-                      <s-number-field
-                        label="Processing"
-                        name="processingDays"
-                        suffix="days"
-                        min={0}
-                        max={30}
-                        step={1}
-                        inputMode="numeric"
-                        details="Prep time."
-                        value={processingDays}
-                        error={errors.processingDays}
-                        onInput={(e: unknown) =>
-                          setProcessingDays(getInputValue(e))
-                        }
-                      />
-                      <s-number-field
-                        label="Min shipping"
-                        name="minDeliveryDays"
-                        suffix="days"
-                        min={0}
-                        max={60}
-                        step={1}
-                        inputMode="numeric"
-                        details="Fastest."
-                        value={minDays}
-                        error={errors.minDeliveryDays}
-                        onInput={(e: unknown) => setMinDays(getInputValue(e))}
-                      />
-                      <s-number-field
-                        label="Max shipping"
-                        name="maxDeliveryDays"
-                        suffix="days"
-                        min={0}
-                        max={60}
-                        step={1}
-                        inputMode="numeric"
-                        details="Slowest."
-                        value={maxDays}
-                        error={errors.maxDeliveryDays}
-                        onInput={(e: unknown) => setMaxDays(getInputValue(e))}
-                      />
-                    </s-grid>
-                    {minGreaterThanMax ? (
-                      <s-paragraph tone="critical">
-                        Max shipping must be the same or later than min.
-                      </s-paragraph>
-                    ) : null}
-                  </s-stack>
-                </s-section>
+                <DeliveryTimingSections
+                  processingDays={processingDays}
+                  minDays={minDays}
+                  maxDays={maxDays}
+                  excluded={excluded}
+                  deliveryDaysLabel={deliveryDaysLabel}
+                  minGreaterThanMax={minGreaterThanMax}
+                  errors={errors}
+                  onProcessingDaysInput={(event) =>
+                    setProcessingDays(getInputValue(event))
+                  }
+                  onMinDaysInput={(event) => setMinDays(getInputValue(event))}
+                  onMaxDaysInput={(event) => setMaxDays(getInputValue(event))}
+                  onToggleDay={toggleDay}
+                />
 
-                <s-section heading="Days excluded from delivery">
-                  <s-stack direction="block" gap="base">
-                    <s-paragraph color="subdued">
-                      Tick days you don’t deliver. Estimates skip them
-                      automatically.
-                    </s-paragraph>
-                    <div
-                      role="group"
-                      aria-label="Days you don't deliver"
-                      style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}
-                    >
-                      {WEEKDAYS.map((d) => {
-                        const off = excluded.includes(d.value);
-                        return (
-                          <button
-                            key={d.value}
-                            type="button"
-                            aria-pressed={off}
-                            onClick={() => toggleDay(d.value)}
-                            style={{
-                              border: off
-                                ? "1px solid #1a1a1a"
-                                : "1px solid #dfe1e6",
-                              borderRadius: "999px",
-                              padding: "9px 14px",
-                              minWidth: "64px",
-                              textAlign: "center",
-                              fontSize: "13px",
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              background: off ? "#1a1a1a" : "#ffffff",
-                              color: off ? "#ffffff" : "#202223",
-                            }}
-                          >
-                            {off ? `✓ ${d.short}` : d.short}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {errors.excludedDays ? (
-                      <s-paragraph tone="critical">
-                        {errors.excludedDays}
-                      </s-paragraph>
-                    ) : null}
-                    <s-paragraph color="subdued">
-                      📅 Delivery days: {deliveryDaysLabel}
-                    </s-paragraph>
-                  </s-stack>
-                </s-section>
-
-                <s-section heading="Storefront message">
-                  <s-stack direction="block" gap="base">
-                    <s-text-field
-                      label="Opening text"
-                      name="msgPrefix"
-                      details="Shown before the delivery dates."
-                      maxLength={120}
-                      autocomplete="off"
-                      value={msgPrefix}
-                      error={errors.msgPrefix}
-                      onInput={(e: unknown) => setMsgPrefix(getInputValue(e))}
-                    />
-                    <s-grid
-                      gridTemplateColumns="@container (inline-size <= 560px) 1fr, 1fr 1fr"
-                      gap="base"
-                    >
-                      <s-text-field
-                        label="Text between dates"
-                        name="msgSeparator"
-                        maxLength={10}
-                        autocomplete="off"
-                        value={msgSeparator}
-                        error={errors.msgSeparator}
-                        onInput={(e: unknown) =>
-                          setMsgSeparator(getInputValue(e))
-                        }
-                      />
-                      <s-text-field
-                        label="Closing text (optional)"
-                        name="msgSuffix"
-                        maxLength={200}
-                        autocomplete="off"
-                        value={msgSuffix}
-                        error={errors.msgSuffix}
-                        onInput={(e: unknown) => setMsgSuffix(getInputValue(e))}
-                      />
-                    </s-grid>
-                    <s-select
-                      label="Date style"
-                      name="dateStyle"
-                      details="How the earliest and latest dates look."
-                      value={dateStyle}
-                      error={errors.dateStyle}
-                      onChange={(e: unknown) => {
-                        const next = getInputValue(e);
-                        setDateStyle(
-                          isStorefrontDateStyle(next)
-                            ? next
-                            : DEFAULT_MESSAGE_PARTS.dateStyle,
-                        );
-                      }}
-                    >
-                      <s-option value="ordinal">Sept 17th</s-option>
-                      <s-option value="short">Sep 17</s-option>
-                      <s-option value="weekday">Fri, Sep 17</s-option>
-                    </s-select>
-                    <s-box
-                      background="subdued"
-                      border="base"
-                      borderRadius="base"
-                      padding="small"
-                    >
-                      <s-stack direction="block" gap="small-100">
-                        <s-paragraph color="subdued">Preview</s-paragraph>
-                        <s-text type="strong">{etaText}</s-text>
-                      </s-stack>
-                    </s-box>
-                    <s-stack direction="inline" gap="small-200">
-                      <s-button
-                        type="button"
-                        variant="tertiary"
-                        icon="reset"
-                        onClick={resetMessage}
-                      >
-                        Reset
-                      </s-button>
-                    </s-stack>
-                  </s-stack>
-                </s-section>
+                <StorefrontMessageSection
+                  msgPrefix={msgPrefix}
+                  msgSeparator={msgSeparator}
+                  msgSuffix={msgSuffix}
+                  dateStyle={dateStyle}
+                  etaText={etaText}
+                  errors={errors}
+                  onPrefixInput={(event) => setMsgPrefix(getInputValue(event))}
+                  onSeparatorInput={(event) =>
+                    setMsgSeparator(getInputValue(event))
+                  }
+                  onSuffixInput={(event) => setMsgSuffix(getInputValue(event))}
+                  onDateStyleChange={(event) => {
+                    const next = getInputValue(event);
+                    setDateStyle(
+                      isStorefrontDateStyle(next)
+                        ? next
+                        : DEFAULT_MESSAGE_PARTS.dateStyle,
+                    );
+                  }}
+                  onReset={resetMessage}
+                />
               </s-stack>
 
-              {/* RIGHT — live preview */}
-              <div style={{ position: "sticky", top: "16px" }}>
-                <s-stack direction="block" gap="base">
-                  {/* Storefront mock — matches product-page design */}
-                  <div
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #e7e5e4",
-                      borderRadius: "18px",
-                      overflow: "hidden",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: "14px 18px 12px",
-                        borderBottom: "1px solid #edebe8",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: "17px",
-                          fontWeight: 600,
-                          lineHeight: "24px",
-                          color: "#1a1a1a",
-                        }}
-                      >
-                        Preview
-                      </div>
-                    </div>
-
-                    <div style={{ padding: "18px" }}>
-                      <div
-                        style={{
-                          position: "relative",
-                          display: "flex",
-                          justifyContent: "center",
-                          alignItems: "center",
-                          background: "#ffffff",
-                        }}
-                      >
-                        {imgOk ? (
-                          <img
-                            src="/preview-chair.jpg"
-                            alt="Example product"
-                            style={{
-                              width: "100%",
-                              height: "120px",
-                              objectFit: "contain",
-                              display: "block",
-                            }}
-                            onError={() => setImgOk(false)}
-                          />
-                        ) : (
-                          <svg
-                            width="110"
-                            height="110"
-                            viewBox="0 0 150 150"
-                            fill="none"
-                            aria-hidden="true"
-                          >
-                            <rect
-                              x="30"
-                              y="52"
-                              width="20"
-                              height="36"
-                              rx="10"
-                              fill="#b4bac5"
-                            />
-                            <rect
-                              x="100"
-                              y="52"
-                              width="20"
-                              height="36"
-                              rx="10"
-                              fill="#b4bac5"
-                            />
-                            <rect
-                              x="46"
-                              y="16"
-                              width="58"
-                              height="54"
-                              rx="15"
-                              fill="#c6ccd5"
-                            />
-                            <rect
-                              x="55"
-                              y="26"
-                              width="40"
-                              height="32"
-                              rx="10"
-                              fill="#d4d9e1"
-                            />
-                            <rect
-                              x="46"
-                              y="66"
-                              width="58"
-                              height="16"
-                              rx="8"
-                              fill="#d8dce3"
-                            />
-                            <g
-                              stroke="#c69a63"
-                              strokeWidth="5"
-                              strokeLinecap="round"
-                            >
-                              <line x1="56" y1="82" x2="48" y2="128" />
-                              <line x1="68" y1="82" x2="65" y2="128" />
-                              <line x1="82" y1="82" x2="85" y2="128" />
-                              <line x1="94" y1="82" x2="102" y2="128" />
-                            </g>
-                          </svg>
-                        )}
-                        <span
-                          style={{
-                            position: "absolute",
-                            top: "0",
-                            right: "0",
-                            background: "#f1f1f3",
-                            borderRadius: "8px",
-                            padding: "6px 10px",
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            color: "#1a1a1a",
-                          }}
-                        >
-                          15% off
-                        </span>
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "14px",
-                          border: "1px solid #e3e1de",
-                          borderRadius: "12px",
-                          padding: "10px",
-                          textAlign: "center",
-                          fontSize: "14px",
-                          fontWeight: 500,
-                          color: "#1a1a1a",
-                          background: "#ffffff",
-                          boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-                        }}
-                      >
-                        Add To Cart
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "10px",
-                          border: "2px solid #111111",
-                          padding: "14px 16px",
-                          fontSize: "17px",
-                          lineHeight: "26px",
-                          fontWeight: 500,
-                          letterSpacing: "-0.01em",
-                          color: "#111111",
-                          background: "#ffffff",
-                        }}
-                      >
-                        {previewDates.ok ? (
-                          <>
-                            {msgPrefix.trim() ? `${msgPrefix.trim()} ` : ""}
-                            <span style={{ fontWeight: 700 }}>{etaCore}</span>
-                            {msgSuffix.trim() ? ` ${msgSuffix.trim()}` : ""}
-                          </>
-                        ) : (
-                          "Get Estimated delivery —"
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <s-section heading="Tips">
-                    <s-stack direction="block" gap="small-200">
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "8px",
-                          alignItems: "flex-start",
-                        }}
-                      >
-                        <span
-                          style={{
-                            flexShrink: 0,
-                            display: "inline-flex",
-                            paddingTop: "2px",
-                          }}
-                        >
-                          <s-icon type="lightbulb" size="small" />
-                        </span>
-                        <span style={{ flex: "1 1 auto", minWidth: 0 }}>
-                          <s-paragraph color="subdued">
-                            Keep ranges tight (3–5 days) to build trust.
-                          </s-paragraph>
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "8px",
-                          alignItems: "flex-start",
-                        }}
-                      >
-                        <span
-                          style={{
-                            flexShrink: 0,
-                            display: "inline-flex",
-                            paddingTop: "2px",
-                          }}
-                        >
-                          <s-icon type="lightbulb" size="small" />
-                        </span>
-                        <span style={{ flex: "1 1 auto", minWidth: 0 }}>
-                          <s-paragraph color="subdued">
-                            Use Default for everything, Product for express
-                            items.
-                          </s-paragraph>
-                        </span>
-                      </div>
-                    </s-stack>
-                  </s-section>
-                </s-stack>
-              </div>
+              <StorefrontPreview
+                previewAvailable={previewDates.ok}
+                prefix={msgPrefix}
+                etaCore={etaCore}
+                suffixSpace={etaSuffixSpace}
+                suffix={etaSuffix}
+              />
             </s-grid>
           </s-stack>
         </s-page>
