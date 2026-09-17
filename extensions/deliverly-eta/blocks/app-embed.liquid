@@ -1,0 +1,29 @@
+{% comment %}
+  Deliverly product context — server-rendered Shopify signal.
+  Emits the current product's identifiers as inert JSON so the
+  app-embed JS can detect the product without fragile DOM scraping.
+  Rendered only when Liquid has a product (product template / editor
+  preview). No credentials, no API calls.
+{% endcomment %}
+{% if product and product.id %}
+  <script type="application/json" data-deliverly-product-context>
+    {
+      "productId": {{ product.id | json }},
+      "productGid": {{ 'gid://shopify/Product/' | append: product.id | json }},
+      "handle": {{ product.handle | json }}
+    }
+  </script>
+{% endif %}
+{% render 'deliverly-eta' %}
+
+{% schema %}
+{
+  "name": "Delivery estimate",
+  "target": "body",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "javascript": "deliverly-eta.js",
+  "settings": []
+}
+{% endschema %}
