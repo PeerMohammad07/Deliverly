@@ -227,8 +227,7 @@ The current source passes Prisma validation and generation, PostgreSQL migration
 
 - Development store: `final-invoice-v3.myshopify.com`
 - Shopify CLI generates the current embedded-app and Theme App Extension preview during `pnpm dev`.
-- Store access credentials are not committed and must be shared securely with the evaluator.
-- The required installation and feature demonstration video is supplied separately from the source repository.
+- Demo video is shared separately.
 
 ## Assumptions and Limitations
 
