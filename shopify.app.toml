@@ -7,7 +7,7 @@ name = "Deliverly"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,write_metaobjects,write_metaobject_definitions,write_app_proxy"
+scopes = "write_products,write_metaobjects,write_metaobject_definitions,write_app_proxy,read_themes"
 
 [app_proxy]
 url = "/api/estimate"
