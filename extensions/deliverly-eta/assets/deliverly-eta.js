@@ -1,7 +1,3 @@
-/* Deliverly ETA: placement + product detection + storefront estimate.
- * Single source of truth is GET /apps/delivery-estimate (App Proxy);
- * this file never calculates dates, resolves rules, or builds messages.
- * The browser only sends the customer-safe product GID. */
 (function () {
   "use strict";
   if (window.__deliverlyEtaInit) return;
@@ -11,7 +7,6 @@
   var GID_RE = /^gid:\/\/shopify\/Product\/\S+$/;
   var NUM_RE = /^\d+$/;
   var cached = { productGid: null, productId: null, handle: null, source: null };
-  var estimateCache = Object.create(null);
   var etaSeq = 0;
   var activeGid = null;
 
@@ -63,7 +58,6 @@
     var ctx = readCtx();
     var uh = urlHandle();
     if (ctx && ctx.productGid) {
-      // Stale tag after client-side nav: never report the wrong product.
       if (uh && ctx.handle && uh !== ctx.handle)
         return { productGid: null, productId: null, handle: uh, source: null };
       return {
@@ -86,26 +80,10 @@
       host.removeAttribute("data-deliverly-product-id");
     }
   }
-  function expose() {
-    try {
-      window.DeliverlyETA = window.DeliverlyETA || {};
-      window.DeliverlyETA.getProduct = function () {
-        return {
-          productGid: cached.productGid,
-          productId: cached.productId,
-          handle: cached.handle,
-          source: cached.source,
-        };
-      };
-    } catch (e) {
-      // Never break placement.
-    }
-  }
   function refresh() {
     var next = detect();
     var changed = next.productGid !== cached.productGid;
     cached = next;
-    expose();
     var host = etaHost();
     if (host && host.isConnected) stamp(host, next);
     if (changed && typeof console !== "undefined" && console.debug)
@@ -144,12 +122,6 @@
     if (host) host.remove();
   }
   function loadEta(host, gid) {
-    var saved = estimateCache[gid];
-    if (saved) {
-      if (saved.enabled) showMessage(host, saved.message);
-      else hideEta();
-      return;
-    }
     if (activeGid === gid) return;
     var my = (etaSeq += 1);
     activeGid = gid;
@@ -158,7 +130,7 @@
       hideEta();
       return;
     }
-    fetch(ETA_URL + "?productId=" + encodeURIComponent(gid))
+    fetch(ETA_URL + "?productId=" + encodeURIComponent(gid), { cache: "no-store" })
       .then(function (res) {
         if (!res || !res.ok) throw new Error("bad estimate");
         return res.json();
@@ -174,14 +146,9 @@
           typeof data.message === "string" &&
           data.message.trim()
         ) {
-          estimateCache[gid] = {
-            enabled: true,
-            message: data.message,
-          };
           stamp(h, cached);
           showMessage(h, data.message);
         } else {
-          estimateCache[gid] = { enabled: false, message: "" };
           hideEta();
         }
       })
@@ -314,12 +281,11 @@
         }
       });
     } catch (e) {
-      // Best-effort; popstate still covers back/forward.
+      if (window.console) console.debug("[deliverly-eta] history patch skipped", e);
     }
   }
 
   patchHistory();
-  expose();
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function onReady() {
       document.removeEventListener("DOMContentLoaded", onReady);
@@ -332,5 +298,6 @@
   document.addEventListener("shopify:section:select", syncEta);
   document.addEventListener("shopify:section:deselect", syncEta);
   document.addEventListener("shopify:section:reorder", syncEta);
+  window.addEventListener("focus", syncEta);
   window.addEventListener("popstate", syncEta);
 })();

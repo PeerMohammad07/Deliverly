@@ -12,6 +12,40 @@ function startOfDay(date: Date): Date {
   return d;
 }
 
+export function getCalendarDateInTimeZone(
+  date: Date,
+  timeZone: string,
+): Date {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    throw new Error("A valid date is required");
+  }
+  if (typeof timeZone !== "string" || !timeZone.trim()) {
+    throw new Error("A valid time zone is required");
+  }
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(date);
+  const value = (type: "year" | "month" | "day") =>
+    Number(parts.find((part) => part.type === type)?.value);
+  const year = value("year");
+  const month = value("month");
+  const day = value("day");
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
+    throw new Error("Couldn’t resolve the current date");
+  }
+
+  return new Date(year, month - 1, day);
+}
+
 function isExcluded(date: Date, excludedDays: Set<number>): boolean {
   return excludedDays.has(date.getDay());
 }
@@ -309,9 +343,10 @@ export function formatStorefrontRange(minDate: Date, maxDate: Date): string {
   return formatStorefrontRangeWithStyle(minDate, maxDate, "ordinal");
 }
 
-export type StorefrontDateStyle = "ordinal" | "short" | "weekday";
+export type StorefrontDateStyle = "long" | "ordinal" | "short" | "weekday";
 
 const DATE_STYLES: readonly StorefrontDateStyle[] = [
+  "long",
   "ordinal",
   "short",
   "weekday",
@@ -335,6 +370,12 @@ export function formatStorefrontDateWithStyle(
   date: Date,
   style: StorefrontDateStyle = "ordinal",
 ): string {
+  if (style === "long") {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+    }).format(date);
+  }
   if (style === "short") {
     return new Intl.DateTimeFormat("en-US", {
       month: "short",
@@ -370,10 +411,10 @@ export interface DeliveryMessageParts {
 }
 
 export const DEFAULT_MESSAGE_PARTS: DeliveryMessageParts = {
-  prefix: "Get Estimated delivery",
-  separator: " - ",
-  suffix: "",
-  dateStyle: "ordinal",
+  prefix: "Estimated delivery between",
+  separator: " and ",
+  suffix: ".",
+  dateStyle: "long",
 };
 
 /**
@@ -401,7 +442,8 @@ export function composeDeliveryMessage(
   const head = parts.prefix.trim();
   const tail = parts.suffix.trim();
   const core = composeDeliveryRange(minStr, parts.separator, maxStr);
-  return `${head ? `${head} ` : ""}${core}${tail ? ` ${tail}` : ""}`;
+  const tailSpace = tail && !/^[,.;:!?]/.test(tail) ? " " : "";
+  return `${head ? `${head} ` : ""}${core}${tailSpace}${tail}`;
 }
 
 export function serializeMessageParts(parts: DeliveryMessageParts): string {

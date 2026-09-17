@@ -1,6 +1,7 @@
 import { resolveDeliveryRule } from "./deliveryRuleResolution.service.server";
 import {
   calculateDeliveryRange,
+  getCalendarDateInTimeZone,
   renderStoredMessage,
   toDateOnlyString,
 } from "../utils/delivery-dates";
@@ -10,7 +11,10 @@ import {
   normalizeShop,
 } from "./deliveryRule.service.server";
 
-const PRODUCT_COLLECTIONS_QUERY = `query ProductCollectionIds($id: ID!) {
+const PRODUCT_CONTEXT_QUERY = `query ProductEstimateContext($id: ID!) {
+  shop {
+    ianaTimezone
+  }
   product(id: $id) {
     id
     collections(first: 50) {
@@ -57,13 +61,13 @@ export class ProductNotFoundError extends Error {
  * never from browser-supplied values, which could be manipulated to
  * steer rule resolution.
  */
-export async function fetchProductCollectionIds(
+export async function fetchProductContext(
   admin: StorefrontAdminClient,
   productId: string,
-): Promise<string[]> {
+): Promise<{ collectionIds: string[]; timeZone: string }> {
   let payload: unknown;
   try {
-    const response = await admin.graphql(PRODUCT_COLLECTIONS_QUERY, {
+    const response = await admin.graphql(PRODUCT_CONTEXT_QUERY, {
       variables: { id: productId },
     });
     payload = await response.json();
@@ -73,7 +77,7 @@ export async function fetchProductCollectionIds(
   }
 
   const body = payload as {
-    data?: { product?: unknown };
+    data?: { product?: unknown; shop?: { ianaTimezone?: unknown } };
     errors?: unknown;
   };
   if (body?.errors) {
@@ -85,17 +89,21 @@ export async function fetchProductCollectionIds(
   if (!product || typeof product !== "object") {
     throw new ProductNotFoundError(productId);
   }
+  const timeZone = body?.data?.shop?.ianaTimezone;
+  if (typeof timeZone !== "string" || !timeZone) {
+    throw new Error("Failed to load shop time zone");
+  }
 
   const edges = (product as { collections?: { edges?: unknown } })
     ?.collections?.edges;
-  if (!Array.isArray(edges)) return [];
+  if (!Array.isArray(edges)) return { collectionIds: [], timeZone };
 
-  const ids: string[] = [];
+  const collectionIds: string[] = [];
   for (const edge of edges) {
     const id = (edge as { node?: { id?: unknown } } | null)?.node?.id;
-    if (typeof id === "string" && id.length > 0) ids.push(id);
+    if (typeof id === "string" && id.length > 0) collectionIds.push(id);
   }
-  return ids;
+  return { collectionIds, timeZone };
 }
 
 /**
@@ -120,7 +128,10 @@ export async function getDeliveryEstimate(input: {
     throw new Error("Admin client is required");
   }
 
-  const collectionIds = await fetchProductCollectionIds(admin, productId);
+  const { collectionIds, timeZone } = await fetchProductContext(
+    admin,
+    productId,
+  );
 
   const rule = await resolveDeliveryRule({
     shop: normalizedShop,
@@ -132,6 +143,7 @@ export async function getDeliveryEstimate(input: {
   }
 
   const { minDate, maxDate } = calculateDeliveryRange({
+    from: getCalendarDateInTimeZone(new Date(), timeZone),
     processingDays: rule.processingDays,
     minShippingDays: rule.minDeliveryDays,
     maxShippingDays: rule.maxDeliveryDays,

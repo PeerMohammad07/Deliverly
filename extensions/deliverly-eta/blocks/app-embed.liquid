@@ -5,6 +5,7 @@
   Rendered only when Liquid has a product (product template / editor
   preview). No credentials, no API calls.
 {% endcomment %}
+
 {% if product and product.id %}
   <script type="application/json" data-deliverly-product-context>
     {
@@ -18,7 +19,7 @@
 
 {% schema %}
 {
-  "name": "Delivery estimate",
+  "name": "Estimated Delivery Date",
   "target": "body",
   "enabled_on": {
     "templates": ["product"]
