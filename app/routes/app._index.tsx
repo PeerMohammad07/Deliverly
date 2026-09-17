@@ -462,36 +462,6 @@ export default function Dashboard() {
           </s-stack>
         </s-box>
       </s-stack>
-      <s-stack direction="block" gap="small-200">
-        <h2 style={SECTION_HEADING}>How delivery estimates work</h2>
-        <s-box
-          padding="base"
-          background="base"
-          border="base"
-          borderRadius="base"
-        >
-          <s-stack direction="block" gap="small-200">
-            <s-paragraph color="subdued">
-              Your ETA is calculated using:
-            </s-paragraph>
-            <s-stack
-              direction="block"
-              gap="small-100"
-              alignItems="center"
-            >
-              <s-text type="strong">Order processing time</s-text>
-              <s-paragraph color="subdued">+</s-paragraph>
-              <s-text type="strong">Delivery time</s-text>
-              <s-paragraph color="subdued">+</s-paragraph>
-              <s-text type="strong">Working days</s-text>
-            </s-stack>
-            <s-paragraph color="subdued">
-              More specific rules take priority over general rules.
-            </s-paragraph>
-            <s-link href="/app/rules">Learn more →</s-link>
-          </s-stack>
-        </s-box>
-      </s-stack>
       </s-stack>
     </s-page>
   );
