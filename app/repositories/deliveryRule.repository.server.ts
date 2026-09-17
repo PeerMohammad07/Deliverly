@@ -1,9 +1,24 @@
-import type { DeliveryRule, RuleTarget, RuleType } from "@prisma/client";
+import type {
+  DeliveryRule,
+  Prisma,
+  RuleTarget,
+  RuleType,
+} from "@prisma/client";
 import prisma from "../db.server";
 
 export type DeliveryRuleWithTargets = DeliveryRule & {
   targets: RuleTarget[];
 };
+
+export type RuleListStatus = "all" | "active" | "inactive";
+
+export interface RuleListPage {
+  rules: DeliveryRuleWithTargets[];
+  filteredTotal: number;
+  total: number;
+  active: number;
+  inactive: number;
+}
 
 export interface CreateRuleData {
   shop: string;
@@ -37,11 +52,13 @@ export class RuleNotFoundError extends Error {
   }
 }
 
-export class DefaultDeleteForbiddenError extends Error {
-  constructor() {
-    super("The store-wide default rule cannot be deleted");
-    this.name = "DefaultDeleteForbiddenError";
-  }
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2002"
+  );
 }
 
 /**
@@ -78,10 +95,56 @@ export async function listRulesByShop(
   return prisma.deliveryRule.findMany({
     where: { shop: normalizedShop },
     include: { targets: true },
-    // Newest activity first (matches the table's "Updated" column);
-    // id breaks millisecond ties so the order is fully deterministic.
-    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
   });
+}
+
+export async function listRulePageByShop(
+  shop: string,
+  input: {
+    status: RuleListStatus;
+    query: string;
+    skip: number;
+    take: number;
+  },
+): Promise<RuleListPage> {
+  if (!shop || typeof shop !== "string") throw new Error("Shop is required");
+  if (!Number.isInteger(input.skip) || input.skip < 0) {
+    throw new Error("Invalid page offset");
+  }
+  if (!Number.isInteger(input.take) || input.take < 1 || input.take > 50) {
+    throw new Error("Invalid page size");
+  }
+
+  const normalizedShop = shop.trim().toLowerCase();
+  const query = input.query.trim();
+  const shopWhere: Prisma.DeliveryRuleWhereInput = { shop: normalizedShop };
+  const filteredWhere: Prisma.DeliveryRuleWhereInput = {
+    ...shopWhere,
+    ...(input.status === "all" ? {} : { enabled: input.status === "active" }),
+    ...(query ? { name: { contains: query } } : {}),
+  };
+
+  const [rules, filteredTotal, total, active] = await prisma.$transaction([
+    prisma.deliveryRule.findMany({
+      where: filteredWhere,
+      include: { targets: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: input.skip,
+      take: input.take,
+    }),
+    prisma.deliveryRule.count({ where: filteredWhere }),
+    prisma.deliveryRule.count({ where: shopWhere }),
+    prisma.deliveryRule.count({ where: { ...shopWhere, enabled: true } }),
+  ]);
+
+  return {
+    rules,
+    filteredTotal,
+    total,
+    active,
+    inactive: total - active,
+  };
 }
 
 /**
@@ -144,47 +207,54 @@ export async function findEnabledDefaultRule(
   });
 }
 
-
 export async function createRule(
   data: CreateRuleData,
 ): Promise<DeliveryRuleWithTargets> {
   const shop = data.shop.trim().toLowerCase();
   if (!shop) throw new Error("Shop is required");
 
-  return prisma.$transaction(async (tx) => {
-    if (data.type === "DEFAULT") {
-      const existing = await tx.deliveryRule.findFirst({
-        where: { shop, type: "DEFAULT" },
-        select: { id: true },
-      });
-      if (existing) throw new DuplicateDefaultRuleError(shop);
-    }
+  try {
+    return await prisma.$transaction(async (tx) => {
+      if (data.type === "DEFAULT") {
+        const existing = await tx.deliveryRule.findFirst({
+          where: { shop, type: "DEFAULT" },
+          select: { id: true },
+        });
+        if (existing) throw new DuplicateDefaultRuleError(shop);
+      }
 
-    return tx.deliveryRule.create({
-      data: {
-        shop,
-        name: data.name,
-        type: data.type,
-        processingDays: data.processingDays,
-        minDeliveryDays: data.minDeliveryDays,
-        maxDeliveryDays: data.maxDeliveryDays,
-        excludedDays: data.excludedDays,
-        customMessage: data.customMessage,
-        enabled: data.enabled,
-        targets:
-          data.targetIds.length > 0
-            ? {
-                create: data.targetIds.map((targetId) => ({
-                  targetType:
-                    data.type === "PRODUCT" ? "PRODUCT" : "COLLECTION",
-                  targetId,
-                })),
-              }
-            : undefined,
-      },
-      include: { targets: true },
+      return tx.deliveryRule.create({
+        data: {
+          shop,
+          defaultShopKey: data.type === "DEFAULT" ? shop : null,
+          name: data.name,
+          type: data.type,
+          processingDays: data.processingDays,
+          minDeliveryDays: data.minDeliveryDays,
+          maxDeliveryDays: data.maxDeliveryDays,
+          excludedDays: data.excludedDays,
+          customMessage: data.customMessage,
+          enabled: data.enabled,
+          targets:
+            data.targetIds.length > 0
+              ? {
+                  create: data.targetIds.map((targetId) => ({
+                    targetType:
+                      data.type === "PRODUCT" ? "PRODUCT" : "COLLECTION",
+                    targetId,
+                  })),
+                }
+              : undefined,
+        },
+        include: { targets: true },
+      });
     });
-  });
+  } catch (error) {
+    if (data.type === "DEFAULT" && isUniqueConstraintError(error)) {
+      throw new DuplicateDefaultRuleError(shop);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -202,48 +272,60 @@ export async function updateRule(
   if (!normalizedShop) throw new Error("Shop is required");
   if (!id || typeof id !== "string") throw new Error("Rule ID is required");
 
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.deliveryRule.findFirst({
-      where: { id, shop: normalizedShop },
-      select: { id: true, type: true },
-    });
-    if (!existing) throw new RuleNotFoundError(id);
-
-    if (data.type === "DEFAULT" && existing.type !== "DEFAULT") {
-      const clash = await tx.deliveryRule.findFirst({
-        where: { shop: normalizedShop, type: "DEFAULT", id: { not: id } },
-        select: { id: true },
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.deliveryRule.findFirst({
+        where: { id, shop: normalizedShop },
+        select: { id: true, type: true },
       });
-      if (clash) throw new DuplicateDefaultRuleError(normalizedShop);
-    }
+      if (!existing) throw new RuleNotFoundError(id);
 
-    return tx.deliveryRule.update({
-      where: { id },
-      data: {
-        name: data.name,
-        type: data.type,
-        processingDays: data.processingDays,
-        minDeliveryDays: data.minDeliveryDays,
-        maxDeliveryDays: data.maxDeliveryDays,
-        excludedDays: data.excludedDays,
-        customMessage: data.customMessage,
-        enabled: data.enabled,
-        targets: {
-          deleteMany: {},
-          create: data.targetIds.map((targetId) => ({
-            targetType: data.type === "PRODUCT" ? "PRODUCT" : "COLLECTION",
-            targetId,
-          })),
+      if (data.type === "DEFAULT" && existing.type !== "DEFAULT") {
+        const clash = await tx.deliveryRule.findFirst({
+          where: {
+            shop: normalizedShop,
+            type: "DEFAULT",
+            id: { not: id },
+          },
+          select: { id: true },
+        });
+        if (clash) throw new DuplicateDefaultRuleError(normalizedShop);
+      }
+
+      return tx.deliveryRule.update({
+        where: { id },
+        data: {
+          defaultShopKey:
+            data.type === "DEFAULT" ? normalizedShop : null,
+          name: data.name,
+          type: data.type,
+          processingDays: data.processingDays,
+          minDeliveryDays: data.minDeliveryDays,
+          maxDeliveryDays: data.maxDeliveryDays,
+          excludedDays: data.excludedDays,
+          customMessage: data.customMessage,
+          enabled: data.enabled,
+          targets: {
+            deleteMany: {},
+            create: data.targetIds.map((targetId) => ({
+              targetType: data.type === "PRODUCT" ? "PRODUCT" : "COLLECTION",
+              targetId,
+            })),
+          },
         },
-      },
-      include: { targets: true },
+        include: { targets: true },
+      });
     });
-  });
+  } catch (error) {
+    if (data.type === "DEFAULT" && isUniqueConstraintError(error)) {
+      throw new DuplicateDefaultRuleError(normalizedShop);
+    }
+    throw error;
+  }
 }
 
 /**
  * Delete a rule scoped to its shop. Targets go via the FK cascade.
- * The store-wide DEFAULT rule cannot be deleted — disable it instead.
  */
 export async function deleteRuleForShop(
   shop: string,
@@ -253,41 +335,39 @@ export async function deleteRuleForShop(
   if (!normalizedShop) throw new Error("Shop is required");
   if (!id || typeof id !== "string") throw new Error("Rule ID is required");
 
-  const existing = await prisma.deliveryRule.findFirst({
-    where: { id, shop: normalizedShop },
-    select: { id: true, name: true, type: true },
-  });
-  if (!existing) throw new RuleNotFoundError(id);
-  if (existing.type === "DEFAULT") throw new DefaultDeleteForbiddenError();
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.deliveryRule.findFirst({
+      where: { id, shop: normalizedShop },
+      select: { id: true, name: true },
+    });
+    if (!existing) throw new RuleNotFoundError(id);
 
-  await prisma.deliveryRule.delete({ where: { id } });
-  return { id: existing.id, name: existing.name };
+    await tx.deliveryRule.delete({ where: { id } });
+    return { id: existing.id, name: existing.name };
+  });
 }
 
 /**
  * Flip only the enabled flag, scoped to the shop.
  * Ownership check and write happen in one transaction.
  */
-export async function setRuleEnabled(
+export async function toggleRuleEnabled(
   shop: string,
   id: string,
-  enabled: boolean,
 ): Promise<DeliveryRuleWithTargets> {
   const normalizedShop = shop.trim().toLowerCase();
   if (!normalizedShop) throw new Error("Shop is required");
   if (!id || typeof id !== "string") throw new Error("Rule ID is required");
-  if (typeof enabled !== "boolean") throw new Error("Enabled must be boolean");
-
   return prisma.$transaction(async (tx) => {
     const existing = await tx.deliveryRule.findFirst({
       where: { id, shop: normalizedShop },
-      select: { id: true },
+      select: { id: true, enabled: true },
     });
     if (!existing) throw new RuleNotFoundError(id);
 
     return tx.deliveryRule.update({
       where: { id },
-      data: { enabled },
+      data: { enabled: !existing.enabled },
       include: { targets: true },
     });
   });

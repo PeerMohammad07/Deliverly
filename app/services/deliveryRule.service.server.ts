@@ -1,14 +1,16 @@
 import {
   createRule,
-  DefaultDeleteForbiddenError,
   deleteRuleForShop,
   DuplicateDefaultRuleError,
   getRuleByIdForShop,
+  listRulePageByShop,
   listRulesByShop,
   RuleNotFoundError,
-  setRuleEnabled,
+  toggleRuleEnabled,
   updateRule,
   type DeliveryRuleWithTargets,
+  type RuleListPage,
+  type RuleListStatus,
 } from "../repositories/deliveryRule.repository.server";
 import {
   formatExcludedDaysLabel,
@@ -53,6 +55,47 @@ export async function getRulesForShop(
     return await listRulesByShop(normalized);
   } catch (error) {
     console.error("[deliveryRule.service] Failed to fetch rules", {
+      shop: normalized,
+      error,
+    });
+    throw new Error("Failed to load delivery rules");
+  }
+}
+
+export async function getRulePageForShop(
+  shop: string,
+  input: {
+    status: RuleListStatus;
+    query: string;
+    page: number;
+    pageSize: number;
+  },
+): Promise<RuleListPage> {
+  const normalized = normalizeShop(shop);
+  if (!isValidShopDomain(normalized)) throw new Error("Invalid shop domain");
+  if (!["all", "active", "inactive"].includes(input.status)) {
+    throw new Error("Invalid rule status");
+  }
+  if (!Number.isInteger(input.page) || input.page < 1) {
+    throw new Error("Invalid page");
+  }
+  if (
+    !Number.isInteger(input.pageSize) ||
+    input.pageSize < 1 ||
+    input.pageSize > 50
+  ) {
+    throw new Error("Invalid page size");
+  }
+
+  try {
+    return await listRulePageByShop(normalized, {
+      status: input.status,
+      query: input.query.trim().slice(0, 100),
+      skip: (input.page - 1) * input.pageSize,
+      take: input.pageSize,
+    });
+  } catch (error) {
+    console.error("[deliveryRule.service] Failed to fetch rule page", {
       shop: normalized,
       error,
     });
@@ -132,8 +175,7 @@ export async function createDeliveryRule(
  */
 export function formatEtaRange(minDays: number, maxDays: number): string {
   if (!Number.isFinite(minDays) || !Number.isFinite(maxDays)) return "—";
-  if (minDays === maxDays)
-    return `${minDays} day${minDays === 1 ? "" : "s"}`;
+  if (minDays === maxDays) return `${minDays} day${minDays === 1 ? "" : "s"}`;
   return `${minDays}–${maxDays} days`;
 }
 
@@ -152,9 +194,7 @@ export function formatRuleTypeLabel(
   }
 }
 
-export function formatTargets(
-  rule: DeliveryRuleWithTargets,
-): string {
+export function formatTargets(rule: DeliveryRuleWithTargets): string {
   if (rule.type === "DEFAULT") return "All products";
 
   if (!rule.targets || rule.targets.length === 0) {
@@ -170,20 +210,19 @@ export function formatTargets(
 
   const parts: string[] = [];
   if (productCount > 0)
-    parts.push(
-      `${productCount} product${productCount === 1 ? "" : "s"}`,
-    );
+    parts.push(`${productCount} product${productCount === 1 ? "" : "s"}`);
   if (collectionCount > 0)
     parts.push(
       `${collectionCount} collection${collectionCount === 1 ? "" : "s"}`,
     );
 
-  return parts.join(" · ") || `${rule.targets.length} target${rule.targets.length === 1 ? "" : "s"}`;
+  return (
+    parts.join(" · ") ||
+    `${rule.targets.length} target${rule.targets.length === 1 ? "" : "s"}`
+  );
 }
 
-export function toDisplayRule(
-  rule: DeliveryRuleWithTargets,
-): DisplayRule {
+export function toDisplayRule(rule: DeliveryRuleWithTargets): DisplayRule {
   return {
     ...rule,
     displayEta: formatEtaRange(rule.minDeliveryDays, rule.maxDeliveryDays),
@@ -274,9 +313,8 @@ export async function updateDeliveryRule(
 }
 
 /**
- * Delete a non-default rule with its targets (FK cascade).
- * RuleNotFoundError and DefaultDeleteForbiddenError bubble so routes
- * can answer with the right message; nothing else leaks.
+ * Delete a rule with its targets (FK cascade).
+ * RuleNotFoundError bubbles so routes can answer with the right message.
  */
 export async function deleteDeliveryRule(
   shop: string,
@@ -295,58 +333,8 @@ export async function deleteDeliveryRule(
       id,
       error,
     });
-    if (
-      error instanceof RuleNotFoundError ||
-      error instanceof DefaultDeleteForbiddenError
-    ) {
-      throw error;
-    }
+    if (error instanceof RuleNotFoundError) throw error;
     throw new Error("Failed to delete delivery rule");
-  }
-}
-
-/**
- * Duplicate a PRODUCT/COLLECTION rule with its targets, as an exact
- * copy named "<name> copy". The DEFAULT rule cannot be duplicated.
- * Single create call, so rule + targets persist atomically.
- */
-export async function duplicateDeliveryRule(
-  shop: string,
-  id: string,
-): Promise<DeliveryRuleWithTargets> {
-  if (!shop || typeof shop !== "string") throw new Error("Shop is required");
-  const normalized = normalizeShop(shop);
-  if (!isValidShopDomain(normalized)) throw new Error("Invalid shop domain");
-  if (!id || typeof id !== "string") throw new Error("Rule ID is required");
-
-  const source = await getRuleByIdForShop(normalized, id);
-  if (!source) throw new RuleNotFoundError(id);
-  if (source.type === "DEFAULT") throw new DuplicateDefaultRuleError(normalized);
-
-  const baseName =
-    source.name.length > 94 ? source.name.slice(0, 94).trimEnd() : source.name;
-
-  try {
-    return await createRule({
-      shop: normalized,
-      name: `${baseName} copy`,
-      type: source.type,
-      processingDays: source.processingDays,
-      minDeliveryDays: source.minDeliveryDays,
-      maxDeliveryDays: source.maxDeliveryDays,
-      excludedDays: source.excludedDays,
-      customMessage: source.customMessage,
-      enabled: source.enabled,
-      targetIds: source.targets.map((t) => t.targetId),
-    });
-  } catch (error) {
-    console.error("[deliveryRule.service] Failed to duplicate rule", {
-      shop: normalized,
-      id,
-      error,
-    });
-    if (error instanceof DuplicateDefaultRuleError) throw error;
-    throw new Error("Failed to duplicate delivery rule");
   }
 }
 
@@ -354,19 +342,17 @@ export async function duplicateDeliveryRule(
  * Flip only the enabled flag. Returns the fresh rule so callers show
  * server truth instead of optimistic state.
  */
-export async function setRuleEnabledState(
+export async function toggleRuleEnabledState(
   shop: string,
   id: string,
-  enabled: boolean,
 ): Promise<DeliveryRuleWithTargets> {
   if (!shop || typeof shop !== "string") throw new Error("Shop is required");
   const normalized = normalizeShop(shop);
   if (!isValidShopDomain(normalized)) throw new Error("Invalid shop domain");
   if (!id || typeof id !== "string") throw new Error("Rule ID is required");
-  if (typeof enabled !== "boolean") throw new Error("Enabled must be boolean");
 
   try {
-    return await setRuleEnabled(normalized, id, enabled);
+    return await toggleRuleEnabled(normalized, id);
   } catch (error) {
     console.error("[deliveryRule.service] Failed to toggle rule", {
       shop: normalized,

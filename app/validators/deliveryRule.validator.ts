@@ -76,7 +76,7 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
 
   const name = typeof input.name === "string" ? input.name.trim() : "";
   if (!name) {
-    errors.name = "Give your rule a name, e.g. “Standard US”.";
+    errors.name = "Give your rule a name, e.g. Standard US.";
   } else if (name.length > MAX_NAME_LENGTH) {
     errors.name = `Keep the name under ${MAX_NAME_LENGTH} characters.`;
   }
@@ -117,6 +117,7 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
   if (
     !Array.isArray(input.excludedDays) ||
     excludedDays.length !== input.excludedDays.length ||
+    new Set(excludedDays).size !== excludedDays.length ||
     excludedDays.some((n) => n < 0 || n > 6)
   ) {
     errors.excludedDays = "Invalid excluded days.";
@@ -181,7 +182,10 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
     }
   }
 
-  const enabled = input.enabled === undefined ? true : Boolean(input.enabled);
+  if (input.enabled !== undefined && typeof input.enabled !== "boolean") {
+    errors.enabled = "Invalid rule status.";
+  }
+  const enabled = input.enabled === undefined ? true : input.enabled === true;
 
   if (Object.keys(errors).length > 0) {
     return { valid: false, errors };
@@ -228,7 +232,7 @@ export function parseRuleFormData(formData: FormData): Partial<RuleFormInput> {
     maxDeliveryDays: toNum(get("maxDeliveryDays")),
     // NaN deliberately kept: the validator rejects it instead of
     // silently dropping tampered values.
-    excludedDays: excludedRaw.map(Number),
+    excludedDays: excludedRaw.map(toNum),
     msgPrefix: get("msgPrefix"),
     msgSeparator: get("msgSeparator"),
     msgSuffix: get("msgSuffix"),

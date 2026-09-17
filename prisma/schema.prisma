@@ -36,6 +36,7 @@ model Session {
 model DeliveryRule {
   id              String       @id @default(cuid())
   shop            String
+  defaultShopKey  String?      @unique
   name            String
   type            RuleType
   minDeliveryDays Int

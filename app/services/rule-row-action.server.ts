@@ -1,12 +1,7 @@
-import {
-  DefaultDeleteForbiddenError,
-  DuplicateDefaultRuleError,
-  RuleNotFoundError,
-} from "../repositories/deliveryRule.repository.server";
+import { RuleNotFoundError } from "../repositories/deliveryRule.repository.server";
 import {
   deleteDeliveryRule,
-  duplicateDeliveryRule,
-  setRuleEnabledState,
+  toggleRuleEnabledState,
 } from "./deliveryRule.service.server";
 
 export interface RuleRowActionData {
@@ -16,7 +11,7 @@ export interface RuleRowActionData {
   message: string;
 }
 
-export type RuleRowIntent = "toggle" | "delete" | "duplicate";
+export type RuleRowIntent = "toggle" | "delete";
 
 /**
  * Shared row-action handler for every rules table (list page, dashboard).
@@ -30,23 +25,22 @@ export async function handleRuleRowAction(
   formData: FormData,
 ): Promise<RuleRowActionData> {
   const intent = String(formData.get("intent") ?? "");
-  const id = String(formData.get("id") ?? "");
-  if (!id) {
-    return { ok: false, message: "Missing rule." };
+  const id = String(formData.get("id") ?? "").trim();
+  if (intent !== "toggle" && intent !== "delete") {
+    return { ok: false, message: "Unknown action." };
+  }
+  if (!id || id.length > 128) {
+    return { ok: false, message: "Invalid rule." };
   }
 
   try {
     if (intent === "toggle") {
-      const raw = String(formData.get("enabled") ?? "");
-      if (raw !== "true" && raw !== "false") {
-        return { ok: false, id, message: "Invalid status." };
-      }
-      const rule = await setRuleEnabledState(shop, id, raw === "true");
+      const rule = await toggleRuleEnabledState(shop, id);
       return {
         ok: true,
         id: rule.id,
         enabled: rule.enabled,
-        message: `“${rule.name}” is now ${rule.enabled ? "active" : "inactive"}.`,
+        message: `${rule.name} is now ${rule.enabled ? "active" : "inactive"}.`,
       };
     }
 
@@ -55,58 +49,12 @@ export async function handleRuleRowAction(
       return {
         ok: true,
         id: deleted.id,
-        message: `Deleted “${deleted.name}”.`,
+        message: `Deleted ${deleted.name}.`,
       };
     }
-
-    if (intent === "duplicate") {
-      try {
-        const copy = await duplicateDeliveryRule(shop, id);
-        return {
-          ok: true,
-          id: copy.id,
-          message: `Duplicated as “${copy.name}”.`,
-        };
-      } catch (error) {
-        console.error("[rule-row-action] duplicate failed", {
-          shop,
-          id,
-          error,
-        });
-        if (error instanceof DuplicateDefaultRuleError) {
-          return {
-            ok: false,
-            id,
-            message: "The default rule can’t be duplicated.",
-          };
-        }
-        if (error instanceof RuleNotFoundError) {
-          return {
-            ok: false,
-            id,
-            message:
-              "That rule no longer exists. The list has been refreshed.",
-          };
-        }
-        return {
-          ok: false,
-          id,
-          message: "Something went wrong. Try again.",
-        };
-      }
-    }
-
     return { ok: false, message: "Unknown action." };
   } catch (error) {
     console.error("[rule-row-action] failed", { shop, intent, id, error });
-    if (error instanceof DefaultDeleteForbiddenError) {
-      return {
-        ok: false,
-        id,
-        message:
-          "The default rule can’t be deleted. Disable it or edit it instead.",
-      };
-    }
     if (error instanceof RuleNotFoundError) {
       return {
         ok: false,
