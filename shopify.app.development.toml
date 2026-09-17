@@ -1,0 +1,24 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "b3e530957467e418b41cb1b293a5d64a"
+application_url = "https://shopify.dev/apps/default-app-home"
+embedded = true
+name = "dev-testing"
+
+[webhooks]
+api_version = "2026-07"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_products,write_app_proxy,read_themes"
+
+[app_proxy]
+url = "/api/estimate"
+prefix = "apps"
+subpath = "delivery-estimate"
+
+[auth]
+redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+
+[build]
+automatically_update_urls_on_dev = true
