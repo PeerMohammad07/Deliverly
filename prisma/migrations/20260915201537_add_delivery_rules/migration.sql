@@ -1,25 +1,35 @@
+-- CreateEnum
+CREATE TYPE "RuleType" AS ENUM ('DEFAULT', 'PRODUCT', 'COLLECTION');
+
+-- CreateEnum
+CREATE TYPE "TargetType" AS ENUM ('PRODUCT', 'COLLECTION');
+
 -- CreateTable
 CREATE TABLE "DeliveryRule" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "shop" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "type" TEXT NOT NULL,
+    "type" "RuleType" NOT NULL,
     "minDeliveryDays" INTEGER NOT NULL,
     "maxDeliveryDays" INTEGER NOT NULL,
     "processingDays" INTEGER NOT NULL,
     "excludedDays" TEXT NOT NULL,
     "customMessage" TEXT NOT NULL,
     "enabled" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "DeliveryRule_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "RuleTarget" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "ruleId" TEXT NOT NULL,
-    "targetType" TEXT NOT NULL,
+    "targetType" "TargetType" NOT NULL,
     "targetId" TEXT NOT NULL,
+
+    CONSTRAINT "RuleTarget_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "RuleTarget_ruleId_fkey" FOREIGN KEY ("ruleId") REFERENCES "DeliveryRule" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
