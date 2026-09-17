@@ -6,66 +6,36 @@
 {% endcomment %}
 <style>
   .deliverly-eta {
-    display: flex;
-    justify-content: center;
-    margin: 1.25rem 0;
-    padding: 0.75rem 0;
-    font-size: 0.9em;
-    line-height: 1.6;
+    margin: 1rem 0;
+    font: inherit;
+    font-size: 0.95em;
+    line-height: 1.5;
     color: inherit;
-    text-align: center;
+    text-align: inherit;
   }
   .deliverly-eta[hidden] {
     display: none;
   }
   .deliverly-eta__row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-  }
-  .deliverly-eta__icon {
-    flex: 0 0 auto;
-    align-self: center;
-    display: block;
-    width: 1.1em;
-    height: 1.1em;
-    margin: 0;
-    padding: 0;
-    opacity: 0.7;
+    min-width: 0;
   }
   .deliverly-eta__label {
     display: block;
+    margin-bottom: 0.125rem;
     font-size: 0.85em;
-    opacity: 0.75;
+    opacity: 0.7;
   }
   .deliverly-eta__dates {
+    display: block;
     font-weight: 600;
-  }
-  .deliverly-eta[data-deliverly-eta-state="loading"] {
-    opacity: 0.55;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 </style>
 
 <template data-deliverly-eta-template>
-  <div class="deliverly-eta" data-deliverly-eta-state="loading">
+  <div class="deliverly-eta" data-deliverly-eta-state="loading" hidden>
     <div class="deliverly-eta__row">
-      <svg
-        class="deliverly-eta__icon"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.8"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path d="M1 5h13v11H1z" />
-        <path d="M14 9h4l3 3v4h-7z" />
-        <circle cx="6" cy="18.5" r="1.8" />
-        <circle cx="17.5" cy="18.5" r="1.8" />
-      </svg>
       <div>
         <span class="deliverly-eta__label">Estimated delivery</span>
         <span class="deliverly-eta__dates" data-deliverly-eta-dates></span>

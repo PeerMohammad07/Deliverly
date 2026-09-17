@@ -11,6 +11,7 @@
   var GID_RE = /^gid:\/\/shopify\/Product\/\S+$/;
   var NUM_RE = /^\d+$/;
   var cached = { productGid: null, productId: null, handle: null, source: null };
+  var estimateCache = Object.create(null);
   var etaSeq = 0;
   var activeGid = null;
 
@@ -121,11 +122,15 @@
   }
   function showLoading(host) {
     setEtaState(host, "loading");
+    var inner = host ? host.querySelector(".deliverly-eta") : null;
+    if (inner) inner.setAttribute("hidden", "");
     var d = host ? host.querySelector("[data-deliverly-eta-dates]") : null;
     if (d) d.textContent = "";
   }
   function showMessage(host, msg) {
     setEtaState(host, "ready");
+    var inner = host ? host.querySelector(".deliverly-eta") : null;
+    if (inner) inner.removeAttribute("hidden");
     var d = host ? host.querySelector("[data-deliverly-eta-dates]") : null;
     if (d) d.textContent = msg;
   }
@@ -139,6 +144,12 @@
     if (host) host.remove();
   }
   function loadEta(host, gid) {
+    var saved = estimateCache[gid];
+    if (saved) {
+      if (saved.enabled) showMessage(host, saved.message);
+      else hideEta();
+      return;
+    }
     if (activeGid === gid) return;
     var my = (etaSeq += 1);
     activeGid = gid;
@@ -163,9 +174,14 @@
           typeof data.message === "string" &&
           data.message.trim()
         ) {
+          estimateCache[gid] = {
+            enabled: true,
+            message: data.message,
+          };
           stamp(h, cached);
           showMessage(h, data.message);
         } else {
+          estimateCache[gid] = { enabled: false, message: "" };
           hideEta();
         }
       })
@@ -246,8 +262,8 @@
     var host = document.createElement("div");
     host.setAttribute("data-deliverly-eta", "");
     stamp(host, cached);
-    showLoading(host);
     host.appendChild(tpl.content.cloneNode(true));
+    showLoading(host);
     return host;
   }
   function place() {
