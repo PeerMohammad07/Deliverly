@@ -255,6 +255,5 @@ The current source passes Prisma validation and generation, PostgreSQL migration
 
 ### Storefront
 <p align="center">
-  <img src="PASTE_YOUR_STOREFRONT_IMAGE_URL_HERE" alt="Deliverly Storefront Integration" width="100%" />
+  <img src="https://github.com/user-attachments/assets/141c0fe3-fd02-4af1-b3fe-d15158951181" alt="Deliverly Storefront Integration" width="100%" />
 </p>
-
