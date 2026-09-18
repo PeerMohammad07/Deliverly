@@ -120,6 +120,7 @@ async function fetchAppHandle(
     const handle = payload?.data?.appByKey?.handle;
     return typeof handle === "string" && handle.length > 0 ? handle : null;
   } catch (error) {
+    if (error instanceof Response) throw error;
     console.error("[appEmbedStatus] app handle lookup failed", error);
     return null;
   }
@@ -192,6 +193,7 @@ export async function getAppEmbedStatus(input: {
       isOurEmbedType(entry.type, { apiKey, appHandle: handle }),
     );
   } catch (error) {
+    if (error instanceof Response) throw error;
     console.error("[appEmbedStatus] status check failed", {
       shop: normalizedShop,
       error,

@@ -67,6 +67,7 @@ async function readAppEmbedEnabled(
       appHandle: process.env.SHOPIFY_APP_HANDLE,
     });
   } catch (error) {
+    if (error instanceof Response) throw error;
     console.error("[app.dashboard] app embed status failed", {
       shop,
       error,
@@ -111,6 +112,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       },
     };
   } catch (error) {
+    if (error instanceof Response) throw error;
     console.error("[app.dashboard] loader failed", { shop, error });
     throw new Response("Failed to load dashboard", { status: 500 });
   }
