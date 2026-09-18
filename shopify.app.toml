@@ -26,7 +26,10 @@ api_version = "2026-07"
   topics = [ "app/scopes_update" ]
 
 [auth]
-redirect_urls = [ "https://deliverly-phi.vercel.app/api/auth" ]
+redirect_urls = [
+  "https://deliverly-phi.vercel.app/auth/callback",
+  "https://deliverly-phi.vercel.app/api/auth",
+]
 
 [build]
 include_config_on_deploy = true

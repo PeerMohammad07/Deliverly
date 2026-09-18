@@ -115,7 +115,7 @@ export async function fetchProductContext(
 export async function getDeliveryEstimate(input: {
   shop: string;
   productId: string;
-  admin: StorefrontAdminClient;
+  admin?: StorefrontAdminClient | null;
 }): Promise<EstimateResult> {
   const { shop, productId, admin } = input;
   if (!shop || typeof shop !== "string") throw new Error("Shop is required");
@@ -124,14 +124,22 @@ export async function getDeliveryEstimate(input: {
     throw new Error("Invalid shop domain");
   }
   if (!isProductGid(productId)) throw new InvalidProductError();
-  if (!admin || typeof admin.graphql !== "function") {
-    throw new Error("Admin client is required");
-  }
 
-  const { collectionIds, timeZone } = await fetchProductContext(
-    admin,
-    productId,
-  );
+  let collectionIds: string[] = [];
+  let timeZone = "UTC";
+  if (admin && typeof admin.graphql === "function") {
+    try {
+      const context = await fetchProductContext(admin, productId);
+      collectionIds = context.collectionIds;
+      timeZone = context.timeZone;
+    } catch (error) {
+      if (error instanceof ProductNotFoundError) throw error;
+      console.error("[storefrontEstimate] product context failed", {
+        shop: normalizedShop,
+        error,
+      });
+    }
+  }
 
   const rule = await resolveDeliveryRule({
     shop: normalizedShop,

@@ -54,12 +54,29 @@
       return m[1];
     }
   }
+  function scrapeGid() {
+    try {
+      var meta = window.ShopifyAnalytics && window.ShopifyAnalytics.meta;
+      return toGid(meta && meta.product && meta.product.id);
+    } catch (e) {
+      return null;
+    }
+  }
   function detect() {
     var ctx = readCtx();
     var uh = urlHandle();
     if (ctx && ctx.productGid) {
-      if (uh && ctx.handle && uh !== ctx.handle)
+      if (uh && ctx.handle && uh !== ctx.handle) {
+        var next = scrapeGid();
+        if (next)
+          return {
+            productGid: next,
+            productId: gidNum(next),
+            handle: uh,
+            source: "meta",
+          };
         return { productGid: null, productId: null, handle: uh, source: null };
+      }
       return {
         productGid: ctx.productGid,
         productId: ctx.productId,
@@ -67,6 +84,14 @@
         source: "liquid",
       };
     }
+    var scraped = scrapeGid();
+    if (scraped)
+      return {
+        productGid: scraped,
+        productId: gidNum(scraped),
+        handle: uh,
+        source: "meta",
+      };
     return { productGid: null, productId: null, handle: uh, source: null };
   }
   function stamp(host, det) {
@@ -130,7 +155,10 @@
       hideEta();
       return;
     }
-    fetch(ETA_URL + "?productId=" + encodeURIComponent(gid), { cache: "no-store" })
+    fetch(ETA_URL + "?productId=" + encodeURIComponent(gid), {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
       .then(function (res) {
         if (!res || !res.ok) throw new Error("bad estimate");
         return res.json();
@@ -167,6 +195,9 @@
     "main .product--information",
     "main [data-product-container]",
     "main",
+    "product-info",
+    ".product__info-container",
+    "body",
   ];
   var PRICE_SELECTORS = [
     ".price--large",
@@ -219,7 +250,7 @@
       if (price) return { node: price, position: "after" };
       var form = firstVisible(root, FORM_SELECTORS);
       if (form) return { node: form, position: "before" };
-      if (ROOT_SELECTORS[i] !== "main") return { node: root, position: "append" };
+      return { node: root, position: "append" };
     }
     return null;
   }

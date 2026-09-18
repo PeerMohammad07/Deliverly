@@ -44,15 +44,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     );
   }
 
-  if (!admin) {
-    // Valid signature but no offline session (e.g. app uninstalled).
-    return Response.json({ error: "Store not available." }, { status: 401 });
-  }
-
   const url = new URL(request.url);
   const shop = (url.searchParams.get("shop") ?? "").trim().toLowerCase();
   if (!isValidShopDomain(shop)) {
     return Response.json({ error: "Unknown store." }, { status: 401 });
+  }
+
+  if (!admin) {
+    console.error("[api.estimate] no offline admin session", { shop });
   }
 
   const productId = (url.searchParams.get("productId") ?? "").trim();
