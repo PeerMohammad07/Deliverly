@@ -252,3 +252,9 @@ The current source passes Prisma validation and generation, PostgreSQL migration
 <p align="center">
   <img src="https://github.com/user-attachments/assets/ab0f5d7d-30b7-4429-a582-1340d2be4807" alt="Deliverly Create Rule" width="100%" />
 </p>
+
+### Storefront
+<p align="center">
+  <img src="PASTE_YOUR_STOREFRONT_IMAGE_URL_HERE" alt="Deliverly Storefront Integration" width="100%" />
+</p>
+
