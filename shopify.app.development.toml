@@ -2,18 +2,18 @@
 
 client_id = "e577575aff638a9599807d1be763dfb4"
 name = "Delivery-dev"
-application_url = "https://example.com"
+application_url = "https://deliverly-phi.vercel.app"
 embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-10"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_products,read_themes,write_app_proxy"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
-
-[webhooks]
-api_version = "2026-10"
-
-[build]
-automatically_update_urls_on_dev = true
+redirect_urls = [ "https://deliverly-phi.vercel.app/api/auth" ]
