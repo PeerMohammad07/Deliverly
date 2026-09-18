@@ -6,9 +6,26 @@
   var ETA_URL = "/apps/delivery-estimate";
   var GID_RE = /^gid:\/\/shopify\/Product\/\S+$/;
   var NUM_RE = /^\d+$/;
-  var cached = { productGid: null, productId: null, handle: null, source: null };
+  var PREVIEW = "Oct 3 – Oct 7";
+  var cached = { productGid: null, productId: null, handle: null };
   var etaSeq = 0;
   var activeGid = null;
+  var ROOTS = [
+    'main section[id*="Product"]',
+    'main section[id*="product"]',
+    'main [id*="MainProduct"]',
+    "main product-info",
+    "main .product__info-container",
+    "main .product--information",
+    "main [data-product-container]",
+    "main",
+    "product-info",
+    "product-information",
+    ".product__info-container",
+    "body",
+  ];
+  var PRICES = [".price--large", ".price__container", "[data-price]", ".product-price", ".price"];
+  var FORMS = ['form[action*="/cart/add"]', "product-form", 'form[action*="cart"]'];
 
   function toGid(v) {
     if (typeof v === "number" && isFinite(v)) v = String(Math.floor(v));
@@ -16,32 +33,30 @@
     v = v.trim();
     if (!v) return null;
     if (GID_RE.test(v)) return v;
-    if (NUM_RE.test(v)) return "gid://shopify/Product/" + v;
-    return null;
+    return NUM_RE.test(v) ? "gid://shopify/Product/" + v : null;
   }
   function gidNum(gid) {
     var m = /^gid:\/\/shopify\/Product\/(\d+)\s*$/.exec(gid || "");
     return m ? m[1] : null;
   }
-  function parseTag(tag) {
-    var d = null;
-    try {
-      d = JSON.parse((tag && tag.textContent) || "");
-    } catch (e) {
-      return null;
-    }
-    var gid = toGid(d && (d.productGid || d.productId));
-    if (!gid) return null;
-    var num = d && d.productId != null ? String(d.productId).trim() : gidNum(gid);
-    if (!NUM_RE.test(num || "")) num = gidNum(gid);
-    var h = d && typeof d.handle === "string" ? d.handle.trim() || null : null;
-    return { productGid: gid, productId: num, handle: h };
+  function det(gid, id, handle) {
+    return { productGid: gid, productId: id || gidNum(gid), handle: handle };
   }
   function readCtx() {
     var tags = document.querySelectorAll("[data-deliverly-product-context]");
     for (var i = 0; i < tags.length; i += 1) {
-      var p = parseTag(tags[i]);
-      if (p && p.productGid) return p;
+      var d = null;
+      try {
+        d = JSON.parse(tags[i].textContent || "");
+      } catch (e) {
+        continue;
+      }
+      var gid = toGid(d && (d.productGid || d.productId));
+      if (!gid) continue;
+      var num = d && d.productId != null ? String(d.productId).trim() : gidNum(gid);
+      if (!NUM_RE.test(num || "")) num = gidNum(gid);
+      var h = d && typeof d.handle === "string" ? d.handle.trim() || null : null;
+      return det(gid, num, h);
     }
     return null;
   }
@@ -56,8 +71,8 @@
   }
   function scrapeGid() {
     try {
-      var meta = window.ShopifyAnalytics && window.ShopifyAnalytics.meta;
-      return toGid(meta && meta.product && meta.product.id);
+      var p = window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product;
+      return toGid(p && p.id);
     } catch (e) {
       return null;
     }
@@ -65,83 +80,68 @@
   function detect() {
     var ctx = readCtx();
     var uh = urlHandle();
-    if (ctx && ctx.productGid) {
-      if (uh && ctx.handle && uh !== ctx.handle) {
-        var next = scrapeGid();
-        if (next)
-          return {
-            productGid: next,
-            productId: gidNum(next),
-            handle: uh,
-            source: "meta",
-          };
-        return { productGid: null, productId: null, handle: uh, source: null };
-      }
-      return {
-        productGid: ctx.productGid,
-        productId: ctx.productId,
-        handle: ctx.handle || uh,
-        source: "liquid",
-      };
-    }
     var scraped = scrapeGid();
-    if (scraped)
-      return {
-        productGid: scraped,
-        productId: gidNum(scraped),
-        handle: uh,
-        source: "meta",
-      };
-    return { productGid: null, productId: null, handle: uh, source: null };
+    if (ctx && ctx.productGid && !(uh && ctx.handle && uh !== ctx.handle))
+      return det(ctx.productGid, ctx.productId, ctx.handle || uh);
+    if (scraped) return det(scraped, null, uh);
+    return det(null, null, uh);
   }
-  function stamp(host, det) {
+  function etaHost() {
+    return document.querySelector("[data-deliverly-eta]");
+  }
+  function isEditor() {
+    try {
+      return !!(window.Shopify && (window.Shopify.designMode || window.Shopify.visualPreviewMode));
+    } catch (e) {
+      return false;
+    }
+  }
+  function inner(host) {
+    return host ? host.querySelector(".deliverly-eta") : null;
+  }
+  function datesEl(host) {
+    return host ? host.querySelector("[data-deliverly-eta-dates]") : null;
+  }
+  function stamp(host, d) {
     if (!host || !host.setAttribute) return;
-    if (det && det.productGid) {
-      host.setAttribute("data-deliverly-product-gid", det.productGid);
-      if (det.productId) host.setAttribute("data-deliverly-product-id", det.productId);
+    if (d && d.productGid) {
+      host.setAttribute("data-deliverly-product-gid", d.productGid);
+      if (d.productId) host.setAttribute("data-deliverly-product-id", d.productId);
       else host.removeAttribute("data-deliverly-product-id");
     } else {
       host.removeAttribute("data-deliverly-product-gid");
       host.removeAttribute("data-deliverly-product-id");
     }
   }
-  function refresh() {
-    var next = detect();
-    var changed = next.productGid !== cached.productGid;
-    cached = next;
-    var host = etaHost();
-    if (host && host.isConnected) stamp(host, next);
-    if (changed && typeof console !== "undefined" && console.debug)
-      console.debug("[deliverly-eta] product detected", next.productGid);
-    return next;
-  }
-
-  function etaHost() {
-    return document.querySelector("[data-deliverly-eta]");
-  }
-  function setEtaState(host, st) {
-    var inner = host ? host.querySelector(".deliverly-eta") : null;
-    if (inner) inner.setAttribute("data-deliverly-eta-state", st);
+  function showMessage(host, msg) {
+    var el = inner(host);
+    if (el) {
+      el.setAttribute("data-deliverly-eta-state", "ready");
+      el.removeAttribute("hidden");
+    }
+    var d = datesEl(host);
+    if (d) d.textContent = msg;
   }
   function showLoading(host) {
-    setEtaState(host, "loading");
-    var inner = host ? host.querySelector(".deliverly-eta") : null;
-    if (inner) inner.setAttribute("hidden", "");
-    var d = host ? host.querySelector("[data-deliverly-eta-dates]") : null;
+    if (isEditor()) return showMessage(host, PREVIEW);
+    var el = inner(host);
+    if (el) {
+      el.setAttribute("data-deliverly-eta-state", "loading");
+      el.setAttribute("hidden", "");
+    }
+    var d = datesEl(host);
     if (d) d.textContent = "";
-  }
-  function showMessage(host, msg) {
-    setEtaState(host, "ready");
-    var inner = host ? host.querySelector(".deliverly-eta") : null;
-    if (inner) inner.removeAttribute("hidden");
-    var d = host ? host.querySelector("[data-deliverly-eta-dates]") : null;
-    if (d) d.textContent = msg;
   }
   function dropFlight() {
     etaSeq += 1;
     activeGid = null;
   }
   function hideEta() {
+    if (isEditor()) {
+      var preview = etaHost();
+      if (preview) showMessage(preview, PREVIEW);
+      return;
+    }
     dropFlight();
     var host = etaHost();
     if (host) host.remove();
@@ -151,10 +151,7 @@
     var my = (etaSeq += 1);
     activeGid = gid;
     showLoading(host);
-    if (typeof fetch === "undefined") {
-      hideEta();
-      return;
-    }
+    if (typeof fetch === "undefined") return hideEta();
     fetch(ETA_URL + "?productId=" + encodeURIComponent(gid), {
       cache: "no-store",
       credentials: "same-origin",
@@ -168,53 +165,17 @@
         activeGid = null;
         var h = etaHost();
         if (!h || !h.isConnected) return;
-        if (
-          data &&
-          data.enabled === true &&
-          typeof data.message === "string" &&
-          data.message.trim()
-        ) {
+        if (data && data.enabled === true && typeof data.message === "string" && data.message.trim()) {
           stamp(h, cached);
           showMessage(h, data.message);
-        } else {
-          hideEta();
-        }
+        } else hideEta();
       })
       .catch(function () {
-        if (my !== etaSeq) return;
-        hideEta();
+        if (my === etaSeq) hideEta();
       });
   }
-
-  var ROOT_SELECTORS = [
-    'main section[id*="Product"]',
-    'main section[id*="product"]',
-    'main [id*="MainProduct"]',
-    "main product-info",
-    "main .product__info-container",
-    "main .product--information",
-    "main [data-product-container]",
-    "main",
-    "product-info",
-    ".product__info-container",
-    "body",
-  ];
-  var PRICE_SELECTORS = [
-    ".price--large",
-    ".price__container",
-    "[data-price]",
-    ".product-price",
-    ".price",
-  ];
-  var FORM_SELECTORS = [
-    'form[action*="/cart/add"]',
-    "product-form",
-    'form[action*="cart"]',
-  ];
-
   function isProductPage() {
-    if (readCtx()) return true;
-    return /\/products\/[^/?#]+/.test(window.location.pathname || "");
+    return !!(readCtx() || /\/products\/[^/?#]+/.test(window.location.pathname || ""));
   }
   function isVisible(el) {
     return !!(el.offsetWidth || el.offsetHeight || (el.getClientRects && el.getClientRects().length));
@@ -231,24 +192,24 @@
         continue;
       }
       for (var j = 0; j < nodes.length; j += 1) {
-        var el = nodes[j];
-        if (isVisible(el) && !inOverlay(el) && !el.closest("[data-deliverly-eta]")) return el;
+        if (isVisible(nodes[j]) && !inOverlay(nodes[j]) && !nodes[j].closest("[data-deliverly-eta]"))
+          return nodes[j];
       }
     }
     return null;
   }
   function findAnchor() {
-    for (var i = 0; i < ROOT_SELECTORS.length; i += 1) {
-      var root = null;
+    for (var i = 0; i < ROOTS.length; i += 1) {
+      var root;
       try {
-        root = document.querySelector(ROOT_SELECTORS[i]);
+        root = document.querySelector(ROOTS[i]);
       } catch (e) {
         continue;
       }
       if (!root || !isVisible(root)) continue;
-      var price = firstVisible(root, PRICE_SELECTORS);
+      var price = firstVisible(root, PRICES);
       if (price) return { node: price, position: "after" };
-      var form = firstVisible(root, FORM_SELECTORS);
+      var form = firstVisible(root, FORMS);
       if (form) return { node: form, position: "before" };
       return { node: root, position: "append" };
     }
@@ -271,11 +232,10 @@
       return true;
     }
     if (existing) existing.remove();
-    if (!isProductPage()) return false;
+    if (!isProductPage() && !isEditor()) return false;
     var anchor = findAnchor();
-    if (!anchor) return false;
     var node = buildInstance();
-    if (!node || !anchor.node.parentNode) return false;
+    if (!anchor || !node || !anchor.node.parentNode) return false;
     if (anchor.position === "after")
       anchor.node.parentNode.insertBefore(node, anchor.node.nextSibling);
     else if (anchor.position === "before")
@@ -284,51 +244,44 @@
     return true;
   }
   function syncEta() {
-    refresh();
+    cached = detect();
+    var host = etaHost();
+    if (host && host.isConnected) stamp(host, cached);
     var gid = cached.productGid;
-    if (!gid || !isProductPage()) {
-      hideEta();
-      return;
-    }
+    var editor = isEditor();
+    if ((!gid || !isProductPage()) && !editor) return hideEta();
     if (!place()) {
       dropFlight();
       return;
     }
-    var host = etaHost();
-    if (host) loadEta(host, gid);
+    host = etaHost();
+    if (!host) return;
+    if (editor) showMessage(host, PREVIEW);
+    if (gid) loadEta(host, gid);
   }
   function patchHistory() {
-    try {
-      ["pushState", "replaceState"].forEach(function (m) {
-        if (window.history && window.history[m] && !window.history[m].__deliverlyPatched) {
-          var orig = window.history[m];
-          var patched = function () {
-            var r = orig.apply(this, arguments);
-            window.setTimeout(syncEta, 0);
-            return r;
-          };
-          patched.__deliverlyPatched = true;
-          window.history[m] = patched;
-        }
-      });
-    } catch (e) {
-      if (window.console) console.debug("[deliverly-eta] history patch skipped", e);
-    }
+    ["pushState", "replaceState"].forEach(function (m) {
+      if (!window.history || !window.history[m] || window.history[m].__deliverlyPatched) return;
+      var orig = window.history[m];
+      var patched = function () {
+        var r = orig.apply(this, arguments);
+        window.setTimeout(syncEta, 0);
+        return r;
+      };
+      patched.__deliverlyPatched = true;
+      window.history[m] = patched;
+    });
   }
 
   patchHistory();
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function onReady() {
-      document.removeEventListener("DOMContentLoaded", onReady);
-      syncEta();
-    });
-  } else {
-    syncEta();
-  }
-  document.addEventListener("shopify:section:load", syncEta);
-  document.addEventListener("shopify:section:select", syncEta);
-  document.addEventListener("shopify:section:deselect", syncEta);
-  document.addEventListener("shopify:section:reorder", syncEta);
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", syncEta);
+  else syncEta();
+  ["shopify:section:load", "shopify:section:select", "shopify:section:deselect", "shopify:section:reorder"].forEach(
+    function (ev) {
+      document.addEventListener(ev, syncEta);
+    },
+  );
   window.addEventListener("focus", syncEta);
   window.addEventListener("popstate", syncEta);
 })();
