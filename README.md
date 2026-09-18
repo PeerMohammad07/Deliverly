@@ -240,3 +240,15 @@ The current source passes Prisma validation and generation, PostgreSQL migration
 - PostgreSQL is required; SQLite is no longer configured.
 - Production deployment requires real application and OAuth redirect URLs in `shopify.app.toml`.
 - Automated calculation tests are not included because they are an optional bonus requirement.
+
+## Screenshots
+
+### Dashboard
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/e689c022-4574-462e-98de-ad22971440ee" alt="Deliverly Dashboard" width="100%" />
+</p>
+
+### Create Rule Page
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/ab0f5d7d-30b7-4429-a582-1340d2be4807" alt="Deliverly Create Rule" width="100%" />
+</p>
