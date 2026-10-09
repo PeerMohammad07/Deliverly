@@ -348,6 +348,20 @@ export async function deleteRuleForShop(
 }
 
 /**
+ * Delete every rule for a shop (shop/redact). Targets go via the FK
+ * cascade. Idempotent: returns 0 when nothing is left.
+ */
+export async function deleteAllRulesForShop(shop: string): Promise<number> {
+  const normalizedShop = shop.trim().toLowerCase();
+  if (!normalizedShop) throw new Error("Shop is required");
+
+  const { count } = await prisma.deliveryRule.deleteMany({
+    where: { shop: normalizedShop },
+  });
+  return count;
+}
+
+/**
  * Flip only the enabled flag, scoped to the shop.
  * Ownership check and write happen in one transaction.
  */
