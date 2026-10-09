@@ -16,7 +16,11 @@ export default function App() {
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
-        <s-link href="/app" rel="home">Dashboard</s-link>
+        {/* rel="home" makes the app name open /app and hides this item from
+            the nav; spread because @shopify/polaris-types lacks `rel`. */}
+        <s-link href="/app" {...{ rel: "home" }}>
+          Dashboard
+        </s-link>
         <s-link href="/app/rules">ETA rules</s-link>
       </s-app-nav>
       <Outlet />
