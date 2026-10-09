@@ -306,7 +306,7 @@ function RulesTable({
       <s-divider direction="inline" />
       <s-box padding="base">
         <s-grid
-          gridTemplateColumns="minmax(0, 1fr) 200px"
+          gridTemplateColumns="@container (inline-size <= 500px) 1fr, minmax(0, 1fr) 200px"
           gap="small-200"
           alignItems="center"
         >

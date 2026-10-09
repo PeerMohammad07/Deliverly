@@ -41,9 +41,6 @@ export function DeliveryTimingSections({
     <>
       <s-section heading="Delivery timing">
         <s-stack direction="block" gap="base">
-          <s-paragraph color="subdued">
-            Ticked days below are skipped.
-          </s-paragraph>
           <s-grid
             gridTemplateColumns="@container (inline-size <= 560px) 1fr, 1fr 1fr 1fr"
             gap="base"
@@ -56,7 +53,7 @@ export function DeliveryTimingSections({
               max={30}
               step={1}
               inputMode="numeric"
-              details="Prep time."
+              details="Business days to prepare an order before it ships."
               value={processingDays}
               error={errors.processingDays}
               onInput={onProcessingDaysInput}
@@ -69,7 +66,7 @@ export function DeliveryTimingSections({
               max={60}
               step={1}
               inputMode="numeric"
-              details="Fastest."
+              details="Fewest business days in transit."
               value={minDays}
               error={errors.minDeliveryDays}
               onInput={onMinDaysInput}
@@ -82,7 +79,7 @@ export function DeliveryTimingSections({
               max={60}
               step={1}
               inputMode="numeric"
-              details="Slowest."
+              details="Most business days in transit."
               value={maxDays}
               error={errors.maxDeliveryDays}
               onInput={onMaxDaysInput}

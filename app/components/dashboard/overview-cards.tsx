@@ -18,19 +18,19 @@ export function OverviewCards({
       >
         <s-section padding="base">
           <s-stack direction="block" gap="small-100">
-            <s-heading>{totalRules}</s-heading>
+            <s-text type="strong">{totalRules}</s-text>
             <s-paragraph color="subdued">Total rules</s-paragraph>
           </s-stack>
         </s-section>
         <s-section padding="base">
           <s-stack direction="block" gap="small-100">
-            <s-heading>{activeRules}</s-heading>
+            <s-text type="strong">{activeRules}</s-text>
             <s-paragraph color="subdued">Active rules</s-paragraph>
           </s-stack>
         </s-section>
         <s-section padding="base">
           <s-stack direction="block" gap="small-100">
-            <s-heading>{targetedRules}</s-heading>
+            <s-text type="strong">{targetedRules}</s-text>
             <s-paragraph color="subdued">Targeted rules</s-paragraph>
           </s-stack>
         </s-section>

@@ -6,7 +6,6 @@ interface StorefrontMessageSectionProps {
   msgSeparator: string;
   msgSuffix: string;
   dateStyle: StorefrontDateStyle;
-  etaText: string;
   errors: RuleFormErrors;
   onPrefixInput: (event: unknown) => void;
   onSeparatorInput: (event: unknown) => void;
@@ -20,7 +19,6 @@ export function StorefrontMessageSection({
   msgSeparator,
   msgSuffix,
   dateStyle,
-  etaText,
   errors,
   onPrefixInput,
   onSeparatorInput,
@@ -77,17 +75,6 @@ export function StorefrontMessageSection({
           <s-option value="short">Sep 17</s-option>
           <s-option value="weekday">Fri, Sep 17</s-option>
         </s-select>
-        <s-box
-          background="subdued"
-          border="base"
-          borderRadius="base"
-          padding="small"
-        >
-          <s-stack direction="block" gap="small-100">
-            <s-paragraph color="subdued">Preview</s-paragraph>
-            <s-text type="strong">{etaText}</s-text>
-          </s-stack>
-        </s-box>
         <s-stack direction="inline" gap="small-200">
           <s-button
             type="button"

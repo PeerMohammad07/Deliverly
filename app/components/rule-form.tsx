@@ -16,7 +16,6 @@ import {
 } from "../validators/deliveryRule.validator";
 import {
   calculateDeliveryRange,
-  composeDeliveryMessage,
   composeDeliveryRange,
   DEFAULT_MESSAGE_PARTS,
   deriveWorkingDays,
@@ -264,11 +263,6 @@ export function RuleForm({
     }
   }, [processingDays, minDays, maxDays, excluded]);
 
-  const messageParts = {
-    prefix: msgPrefix,
-    separator: msgSeparator,
-    suffix: msgSuffix,
-  };
 
   const etaMinStr = previewDates.ok
     ? formatStorefrontDateWithStyle(previewDates.minDate, dateStyle)
@@ -279,9 +273,6 @@ export function RuleForm({
   const etaCore = previewDates.ok
     ? composeDeliveryRange(etaMinStr, msgSeparator, etaMaxStr)
     : "";
-  const etaText = previewDates.ok
-    ? composeDeliveryMessage(messageParts, etaMinStr, etaMaxStr)
-    : "Estimated delivery between —";
   const etaSuffix = msgSuffix.trim();
   const etaSuffixSpace = etaSuffix && !/^[,.;:!?]/.test(etaSuffix) ? " " : "";
 
@@ -481,6 +472,7 @@ export function RuleForm({
         <button
           variant="primary"
           aria-label="Save rule"
+          loading={isSaving ? "" : undefined}
           disabled={isSaving}
           onClick={handleSaveClick}
         ></button>
@@ -612,7 +604,6 @@ export function RuleForm({
                   msgSeparator={msgSeparator}
                   msgSuffix={msgSuffix}
                   dateStyle={dateStyle}
-                  etaText={etaText}
                   errors={errors}
                   onPrefixInput={(event) => setMsgPrefix(getInputValue(event))}
                   onSeparatorInput={(event) =>
