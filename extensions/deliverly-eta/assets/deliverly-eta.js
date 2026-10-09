@@ -10,6 +10,9 @@
   var cached = { productGid: null, productId: null, handle: null };
   var etaSeq = 0;
   var activeGid = null;
+  // Product whose estimate is currently visible. Refreshes for it keep the
+  // message on screen (no hide/show flash, no layout shift).
+  var shownGid = null;
   var ROOTS = [
     'main section[id*="Product"]',
     'main section[id*="product"]',
@@ -123,6 +126,7 @@
     if (d) d.textContent = msg;
   }
   function showLoading(host) {
+    shownGid = null;
     if (isEditor()) return showMessage(host, PREVIEW);
     var el = inner(host);
     if (el) {
@@ -143,6 +147,7 @@
       return;
     }
     dropFlight();
+    shownGid = null;
     var host = etaHost();
     if (host) host.remove();
   }
@@ -150,7 +155,8 @@
     if (activeGid === gid) return;
     var my = (etaSeq += 1);
     activeGid = gid;
-    showLoading(host);
+    var refreshing = shownGid === gid;
+    if (!refreshing) showLoading(host);
     if (typeof fetch === "undefined") return hideEta();
     fetch(ETA_URL + "?productId=" + encodeURIComponent(gid), {
       cache: "no-store",
@@ -168,10 +174,14 @@
         if (data && data.enabled === true && typeof data.message === "string" && data.message.trim()) {
           stamp(h, cached);
           showMessage(h, data.message);
+          shownGid = gid;
         } else hideEta();
       })
       .catch(function () {
-        if (my === etaSeq) hideEta();
+        if (my !== etaSeq) return;
+        // A failed background refresh keeps the estimate already shown.
+        if (refreshing && shownGid === gid) activeGid = null;
+        else hideEta();
       });
   }
   function isProductPage() {

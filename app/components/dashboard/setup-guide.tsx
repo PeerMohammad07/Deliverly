@@ -246,23 +246,12 @@ export function SetupGuide({
                     <s-paragraph color="subdued">
                       {etaConfirmed
                         ? "ETA display is confirmed for your store."
-                        : "Confirm your store to ensure the estimated delivery date is displaying correctly as expected. Get in touch if you need any tweaks."}
+                        : "Check your storefront to make sure the estimated delivery date displays as expected."}
                     </s-paragraph>
-                    {etaConfirmed ? (
-                      <s-button variant="secondary">Contact support</s-button>
-                    ) : (
-                      <s-button-group>
-                        <s-button
-                          slot="primary-action"
-                          variant="primary"
-                          onClick={onConfirmEta}
-                        >
-                          Yay, Its working 😁
-                        </s-button>
-                        <s-button slot="secondary-actions" variant="secondary">
-                          Contact support
-                        </s-button>
-                      </s-button-group>
+                    {etaConfirmed ? null : (
+                      <s-button variant="primary" onClick={onConfirmEta}>
+                        Confirm it’s working
+                      </s-button>
                     )}
                   </s-stack>
                 ) : null}

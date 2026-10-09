@@ -484,7 +484,8 @@ export default function EtaRulesPage() {
     hasPreviousPage,
     hasNextPage,
   } = useLoaderData<typeof loader>();
-  const { busyId, submitIntent, shopify } = useRuleRowActions();
+  const { busyId, submitIntent, shopify, error, clearError, showError } =
+    useRuleRowActions();
   const navigate = useNavigate();
   const navigation = useNavigation();
   const [pendingDelete, setPendingDelete] = useState<Pick<
@@ -535,9 +536,7 @@ export default function EtaRulesPage() {
     setPendingDelete(rule);
     shopify.modal.show("delete-rule-modal").catch((error) => {
       console.error("[app.rules] delete modal failed", error);
-      shopify.toast.show("Couldn’t open the delete confirmation.", {
-        isError: true,
-      });
+      showError("Couldn’t open the delete confirmation. Try again.");
     });
   }
 
@@ -551,6 +550,17 @@ export default function EtaRulesPage() {
         <s-paragraph color="subdued">
           Manage the delivery estimates shown to your customers.
         </s-paragraph>
+
+        {error ? (
+          <s-banner
+            tone="critical"
+            heading="Couldn’t update rule"
+            dismissible
+            onDismiss={clearError}
+          >
+            {error}
+          </s-banner>
+        ) : null}
 
         {hasRules ? (
           <s-stack direction="block" gap="base">

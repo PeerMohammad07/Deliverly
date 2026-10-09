@@ -33,6 +33,16 @@ Country-based estimates, holiday or blackout dates, custom storefront colors, an
 - Liquid, CSS, and lightweight storefront JavaScript
 - pnpm 11
 
+## Access Scopes
+
+Deliverly requests only the scopes below (`shopify.app.toml`).
+
+| Scope | Why it is needed | Where it is used |
+| ----- | ---------------- | ---------------- |
+| `read_products` | Resolve which collections a product belongs to so collection rules apply on the storefront, and show product and collection titles in the rule editor. | `app/services/storefrontEstimate.service.server.ts`, `app/routes/app.rules.$ruleId.tsx` |
+| `read_themes` | Read the merchant's published theme so the storefront ETA message can be set up to fit that theme. Today it is used to read the published theme's `config/settings_data.json` and confirm that the Deliverly app embed is enabled, so the dashboard can show the correct setup status. Theme-specific message styling is planned on the same scope. Read-only: Deliverly never creates, edits, or deletes theme files. | `app/services/appEmbedStatus.service.server.ts` |
+| `write_app_proxy` | Serve the storefront estimate endpoint through the Shopify App Proxy (`/apps/delivery-estimate`). | `shopify.app.toml` `[app_proxy]`, `app/routes/api.estimate.tsx` |
+
 ## Installation and Development Setup
 
 ### Requirements

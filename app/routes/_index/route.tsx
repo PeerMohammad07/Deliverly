@@ -17,24 +17,25 @@ export default function App() {
   return (
     <div className={styles.index}>
       <div className={styles.content}>
-        <h1 className={styles.heading}>A short heading about [your app]</h1>
+        <h1 className={styles.heading}>Deliverly</h1>
         <p className={styles.text}>
-          A tagline about [your app] that describes your value proposition.
+          Show estimated delivery dates on your Shopify product pages.
         </p>
         <ul className={styles.list}>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Flexible rules</strong>. Set delivery estimates for all
+            products, specific collections, or individual products.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Your delivery schedule</strong>. Combine processing and shipping
+            days, and skip the days you don’t deliver.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Your wording</strong>. Customize the storefront message and
+            date format, and preview it before you save.
           </li>
         </ul>
+        <p>Open Deliverly from your Shopify admin to get started.</p>
       </div>
     </div>
   );
