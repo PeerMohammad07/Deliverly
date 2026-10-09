@@ -11,21 +11,29 @@ import {
   normalizeShop,
 } from "./deliveryRule.service.server";
 
-const PRODUCT_CONTEXT_QUERY = `query ProductEstimateContext($id: ID!) {
+const PRODUCT_CONTEXT_QUERY = `query ProductEstimateContext($id: ID!, $after: String) {
   shop {
     ianaTimezone
   }
   product(id: $id) {
     id
-    collections(first: 50) {
+    collections(first: 250, after: $after) {
       edges {
         node {
           id
         }
       }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
     }
   }
 }`;
+
+// 250 is the Admin API page maximum. The cap bounds storefront latency;
+// products in more collections than this are vanishingly rare.
+const MAX_COLLECTION_PAGES = 10;
 
 /**
  * Minimal Admin API client surface the estimate flow needs.
@@ -65,44 +73,71 @@ export async function fetchProductContext(
   admin: StorefrontAdminClient,
   productId: string,
 ): Promise<{ collectionIds: string[]; timeZone: string }> {
-  let payload: unknown;
-  try {
-    const response = await admin.graphql(PRODUCT_CONTEXT_QUERY, {
-      variables: { id: productId },
-    });
-    payload = await response.json();
-  } catch (error) {
-    console.error("[storefrontEstimate] product lookup failed", error);
-    throw new Error("Failed to load product");
-  }
-
-  const body = payload as {
-    data?: { product?: unknown; shop?: { ianaTimezone?: unknown } };
-    errors?: unknown;
-  };
-  if (body?.errors) {
-    console.error("[storefrontEstimate] product lookup errors", body.errors);
-    throw new Error("Failed to load product");
-  }
-
-  const product = body?.data?.product;
-  if (!product || typeof product !== "object") {
-    throw new ProductNotFoundError(productId);
-  }
-  const timeZone = body?.data?.shop?.ianaTimezone;
-  if (typeof timeZone !== "string" || !timeZone) {
-    throw new Error("Failed to load shop time zone");
-  }
-
-  const edges = (product as { collections?: { edges?: unknown } })
-    ?.collections?.edges;
-  if (!Array.isArray(edges)) return { collectionIds: [], timeZone };
-
   const collectionIds: string[] = [];
-  for (const edge of edges) {
-    const id = (edge as { node?: { id?: unknown } } | null)?.node?.id;
-    if (typeof id === "string" && id.length > 0) collectionIds.push(id);
+  let timeZone = "";
+  let after: string | null = null;
+
+  for (let page = 0; page < MAX_COLLECTION_PAGES; page += 1) {
+    let payload: unknown;
+    try {
+      const response = await admin.graphql(PRODUCT_CONTEXT_QUERY, {
+        variables: { id: productId, after },
+      });
+      payload = await response.json();
+    } catch (error) {
+      console.error("[storefrontEstimate] product lookup failed", error);
+      throw new Error("Failed to load product");
+    }
+
+    const body = payload as {
+      data?: { product?: unknown; shop?: { ianaTimezone?: unknown } };
+      errors?: unknown;
+    };
+    if (body?.errors) {
+      console.error("[storefrontEstimate] product lookup errors", body.errors);
+      throw new Error("Failed to load product");
+    }
+
+    const product = body?.data?.product;
+    if (!product || typeof product !== "object") {
+      throw new ProductNotFoundError(productId);
+    }
+    const tz = body?.data?.shop?.ianaTimezone;
+    if (typeof tz !== "string" || !tz) {
+      throw new Error("Failed to load shop time zone");
+    }
+    timeZone = tz;
+
+    const collections = (
+      product as {
+        collections?: {
+          edges?: unknown;
+          pageInfo?: { hasNextPage?: unknown; endCursor?: unknown };
+        };
+      }
+    ).collections;
+    const edges = collections?.edges;
+    if (Array.isArray(edges)) {
+      for (const edge of edges) {
+        const id = (edge as { node?: { id?: unknown } } | null)?.node?.id;
+        if (typeof id === "string" && id.length > 0) collectionIds.push(id);
+      }
+    }
+
+    const pageInfo = collections?.pageInfo;
+    if (
+      pageInfo?.hasNextPage !== true ||
+      typeof pageInfo.endCursor !== "string"
+    ) {
+      return { collectionIds, timeZone };
+    }
+    after = pageInfo.endCursor;
   }
+
+  console.warn("[storefrontEstimate] collection pages capped", {
+    productId,
+    collected: collectionIds.length,
+  });
   return { collectionIds, timeZone };
 }
 

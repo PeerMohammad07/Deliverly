@@ -244,7 +244,7 @@ The current source passes Prisma validation and generation, PostgreSQL migration
 - Excluded weekdays apply to both processing and delivery-day calculations.
 - Zero processing or delivery days means the current shop date when it is available; otherwise the next available weekday is used.
 - Date formatting is currently English (`en-US`).
-- Product collection resolution reads the first 50 collections returned by Shopify.
+- Product collection resolution pages through all of a product's collections, 250 at a time, up to 2,500.
 - Theme placement uses common product-price and add-to-cart selectors, with a product-area fallback.
 - Country-specific estimates, holidays, blackout dates, and storefront color controls are not implemented.
 - PostgreSQL is required; SQLite is no longer configured.
