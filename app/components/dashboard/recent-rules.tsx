@@ -83,7 +83,7 @@ export function RecentRules({ rules, loading, onViewAll }: RecentRulesProps) {
                   your storefront.
                 </s-paragraph>
               </s-stack>
-              <s-button variant="primary" icon="plus" href="/app/rules/new">
+              <s-button variant="secondary" icon="plus" href="/app/rules/new">
                 Create rule
               </s-button>
             </s-stack>

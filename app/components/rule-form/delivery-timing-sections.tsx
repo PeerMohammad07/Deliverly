@@ -1,13 +1,13 @@
 import type { RuleFormErrors } from "../../validators/deliveryRule.validator";
 
 const WEEKDAYS = [
-  { value: 0, short: "Sun" },
-  { value: 1, short: "Mon" },
-  { value: 2, short: "Tue" },
-  { value: 3, short: "Wed" },
-  { value: 4, short: "Thu" },
-  { value: 5, short: "Fri" },
-  { value: 6, short: "Sat" },
+  { value: 0, label: "Sunday" },
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
 ];
 
 interface DeliveryTimingSectionsProps {
@@ -21,7 +21,7 @@ interface DeliveryTimingSectionsProps {
   onProcessingDaysInput: (event: unknown) => void;
   onMinDaysInput: (event: unknown) => void;
   onMaxDaysInput: (event: unknown) => void;
-  onToggleDay: (day: number) => void;
+  onExcludedChange: (days: number[]) => void;
 }
 
 export function DeliveryTimingSections({
@@ -35,7 +35,7 @@ export function DeliveryTimingSections({
   onProcessingDaysInput,
   onMinDaysInput,
   onMaxDaysInput,
-  onToggleDay,
+  onExcludedChange,
 }: DeliveryTimingSectionsProps) {
   return (
     <>
@@ -95,45 +95,30 @@ export function DeliveryTimingSections({
 
       <s-section heading="Days excluded from delivery">
         <s-stack direction="block" gap="base">
-          <s-paragraph color="subdued">
-            Tick days you don’t deliver. Estimates skip them automatically.
-          </s-paragraph>
-          <div
-            role="group"
-            aria-label="Days you don't deliver"
-            style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}
+          <s-choice-list
+            label="Days you don’t deliver"
+            name="excludedDays"
+            multiple
+            details="Estimates skip these days automatically."
+            values={excluded.map(String)}
+            error={errors.excludedDays}
+            onChange={(event) =>
+              onExcludedChange(
+                event.currentTarget.values
+                  .map(Number)
+                  .filter((day) => Number.isInteger(day))
+                  .sort((a, b) => a - b),
+              )
+            }
           >
-            {WEEKDAYS.map((day) => {
-              const off = excluded.includes(day.value);
-              return (
-                <button
-                  key={day.value}
-                  type="button"
-                  aria-pressed={off}
-                  onClick={() => onToggleDay(day.value)}
-                  style={{
-                    border: off ? "1px solid #1a1a1a" : "1px solid #dfe1e6",
-                    borderRadius: "999px",
-                    padding: "9px 14px",
-                    minWidth: "64px",
-                    textAlign: "center",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    background: off ? "#1a1a1a" : "#ffffff",
-                    color: off ? "#ffffff" : "#202223",
-                  }}
-                >
-                  {off ? `✓ ${day.short}` : day.short}
-                </button>
-              );
-            })}
-          </div>
-          {errors.excludedDays ? (
-            <s-paragraph tone="critical">{errors.excludedDays}</s-paragraph>
-          ) : null}
+            {WEEKDAYS.map((day) => (
+              <s-choice key={day.value} value={String(day.value)}>
+                {day.label}
+              </s-choice>
+            ))}
+          </s-choice-list>
           <s-paragraph color="subdued">
-            📅 Delivery days: {deliveryDaysLabel}
+            Delivery days: {deliveryDaysLabel}
           </s-paragraph>
         </s-stack>
       </s-section>

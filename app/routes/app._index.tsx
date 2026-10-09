@@ -194,26 +194,11 @@ export default function Dashboard() {
     navigation.location?.pathname.startsWith("/app/rules");
 
   return (
-    <s-page>
+    <s-page heading="Dashboard">
       <s-stack direction="block" gap="base">
-        <s-stack direction="block" gap="small-200">
-          <h1
-            style={{
-              margin: "0",
-              fontSize: "20px",
-              fontWeight: 700,
-              lineHeight: "28px",
-              letterSpacing: "-0.02em",
-              color: "#202223",
-            }}
-          >
-            Dashboard
-          </h1>
-          <s-paragraph color="subdued">
-            Get a quick overview of your delivery estimates and storefront
-            setup.
-          </s-paragraph>
-        </s-stack>
+        <s-paragraph color="subdued">
+          Get a quick overview of your delivery estimates and storefront setup.
+        </s-paragraph>
         <SetupGuide
           hidden={hidden}
           open={open}

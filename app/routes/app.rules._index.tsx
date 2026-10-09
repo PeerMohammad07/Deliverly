@@ -136,111 +136,21 @@ function buildRulesUrl(
   return search ? `/app/rules?${search}` : "/app/rules";
 }
 
-function EmptyIllustration({ size = 160 }: { size?: number }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        width: `${size + 60}px`,
-        height: `${size + 20}px`,
-        position: "relative",
-      }}
-      aria-hidden="true"
-    >
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 160 160"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        style={{ filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.06))" }}
-      >
-        <circle cx="80" cy="80" r="70" fill="#F3F3F5" />
-        <rect
-          x="58"
-          y="24"
-          width="72"
-          height="92"
-          rx="6"
-          fill="white"
-          stroke="#E3E3E7"
-          strokeWidth="1.2"
-          opacity="0.7"
-        />
-        <rect
-          x="52"
-          y="28"
-          width="72"
-          height="92"
-          rx="6"
-          fill="white"
-          stroke="#E3E3E7"
-          strokeWidth="1.2"
-          opacity="0.85"
-        />
-        <rect
-          x="36"
-          y="32"
-          width="84"
-          height="98"
-          rx="8"
-          fill="white"
-          stroke="#EDEEEF"
-          strokeWidth="1.4"
-        />
-        <rect x="52" y="52" width="28" height="28" rx="2" fill="#E8B84B" />
-        <rect
-          x="52"
-          y="52"
-          width="28"
-          height="28"
-          rx="2"
-          fill="none"
-          stroke="#D9A441"
-          strokeWidth="0.8"
-        />
-        <path d="M52 52 L80 80 L52 80 Z" fill="black" opacity="0.06" />
-        <rect x="52" y="92" width="52" height="5" rx="2.5" fill="#EDEEEF" />
-        <rect x="52" y="102" width="52" height="5" rx="2.5" fill="#EDEEEF" />
-        <rect x="52" y="112" width="52" height="5" rx="2.5" fill="#EDEEEF" />
-        <rect x="52" y="124" width="32" height="5" rx="2.5" fill="#EDEEEF" />
-      </svg>
-    </div>
-  );
-}
-
 function EmptyState() {
   return (
     <s-box border="base" borderRadius="base" background="base" padding="large">
       <s-stack direction="block" gap="base" alignItems="center">
-        {/* Illustration — stacked documents with amber header */}
-        <s-box padding="base">
-          <EmptyIllustration size={140} />
+        <s-box padding="small" background="subdued" borderRadius="base">
+          <s-icon type="calendar" />
         </s-box>
-
-        <s-stack direction="block" gap="small-200" alignItems="center">
-          <div
-            style={{
-              fontSize: "16px",
-              fontWeight: 650,
-              lineHeight: "24px",
-              color: "#202223",
-              textAlign: "center",
-            }}
-          >
-            No delivery rules yet
-          </div>
-          <div style={{ textAlign: "center", maxWidth: "480px" }}>
-            <s-paragraph color="subdued">
-              Create a rule to start showing estimated delivery dates on your
-              storefront.
-            </s-paragraph>
-          </div>
+        <s-stack direction="block" gap="small-100" alignItems="center">
+          <s-heading>No delivery rules yet</s-heading>
+          <s-paragraph color="subdued">
+            Create a rule to start showing estimated delivery dates on your
+            storefront.
+          </s-paragraph>
         </s-stack>
-
-        <s-button variant="primary" href="/app/rules/new">
+        <s-button variant="primary" icon="plus" href="/app/rules/new">
           Create rule
         </s-button>
       </s-stack>

@@ -50,41 +50,17 @@ export function TargetSelectionSection({
                 alignItems="center"
                 justifyContent="space-between"
               >
-                <span
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: "#202223",
-                  }}
-                >
-                  All products
-                </span>
+                <s-text type="strong">All products</s-text>
                 <s-badge tone="success">Selected</s-badge>
               </s-stack>
             </s-box>
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                alignItems: "flex-start",
-              }}
-            >
-              <span
-                style={{
-                  flexShrink: 0,
-                  display: "inline-flex",
-                  paddingTop: "2px",
-                }}
-              >
-                <s-icon type="info" size="small" />
-              </span>
-              <span style={{ flex: "1 1 auto", minWidth: 0 }}>
-                <s-paragraph color="subdued">
-                  This default rule applies to all products without a more
-                  specific rule. Priority: Product → Collection → Default.
-                </s-paragraph>
-              </span>
-            </div>
+            <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small-200">
+              <s-icon type="info" size="small" />
+              <s-paragraph color="subdued">
+                This default rule applies to all products without a more
+                specific rule. Priority: Product → Collection → Default.
+              </s-paragraph>
+            </s-grid>
           </s-stack>
         ) : (
           <s-stack direction="block" gap="small-200">

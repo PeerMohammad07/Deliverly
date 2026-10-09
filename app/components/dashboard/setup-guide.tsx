@@ -1,13 +1,3 @@
-import type { CSSProperties } from "react";
-
-const SECTION_HEADING: CSSProperties = {
-  margin: "0",
-  fontSize: "15px",
-  fontWeight: 650,
-  lineHeight: "22px",
-  color: "#202223",
-};
-
 interface SetupGuideProps {
   hidden: boolean;
   open: boolean;
@@ -54,15 +44,7 @@ export function SetupGuide({
           justifyContent="space-between"
           gap="small-200"
         >
-          <h2
-            style={{
-              ...SECTION_HEADING,
-              fontSize: "16px",
-              lineHeight: "24px",
-            }}
-          >
-            Setup guide
-          </h2>
+          <s-heading>Setup guide</s-heading>
           <s-stack direction="inline" gap="small-100" alignItems="center">
             <s-button
               commandFor="setup-menu"

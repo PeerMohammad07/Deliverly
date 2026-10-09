@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Link,
   useActionData,
   useNavigate,
   useNavigation,
@@ -286,14 +285,6 @@ export function RuleForm({
   const typeRef = useRef(type);
   typeRef.current = type;
 
-  function toggleDay(day: number) {
-    setExcluded((prev) =>
-      prev.includes(day)
-        ? prev.filter((d) => d !== day)
-        : [...prev, day].sort((a, b) => a - b),
-    );
-  }
-
   function handleTypeChange(next: RuleTypeInput) {
     // Picks are resource-specific — never carry products into a
     // collection rule (or vice versa).
@@ -419,8 +410,7 @@ export function RuleForm({
     doSave();
   }
 
-  async function handleBackClick(e: React.MouseEvent<HTMLAnchorElement>) {
-    e.preventDefault();
+  async function handleBackClick() {
     try {
       await shopify.saveBar.leaveConfirmation();
       void navigate("/app/rules");
@@ -488,40 +478,14 @@ export function RuleForm({
         onReset={handleReset}
         aria-busy={isSaving}
       >
-        <s-page>
+        <s-page heading={labels.title}>
+          {/* No href: the click goes through the save bar's leave
+              confirmation before navigating. */}
+          <s-link slot="breadcrumb-actions" onClick={handleBackClick}>
+            ETA rules
+          </s-link>
           <s-stack direction="block" gap="base">
-            <s-stack direction="block" gap="small-200">
-              <s-stack direction="inline" gap="small-200" alignItems="center">
-                <Link
-                  to="/app/rules"
-                  aria-label="Back to ETA rules"
-                  onClick={handleBackClick}
-                  style={{
-                    display: "inline-flex",
-                    lineHeight: 0,
-                    padding: "8px",
-                    margin: "-8px",
-                    color: "#5c5f62",
-                    textDecoration: "none",
-                  }}
-                >
-                  <s-icon type="arrow-left" size="base" />
-                </Link>
-                <h1
-                  style={{
-                    margin: "0",
-                    fontSize: "20px",
-                    fontWeight: 700,
-                    lineHeight: "28px",
-                    letterSpacing: "-0.02em",
-                    color: "#202223",
-                  }}
-                >
-                  {labels.title}
-                </h1>
-              </s-stack>
-              <s-paragraph color="subdued">{labels.subtitle}</s-paragraph>
-            </s-stack>
+            <s-paragraph color="subdued">{labels.subtitle}</s-paragraph>
 
             {formError ? (
               <s-banner heading="Couldn’t save this rule" tone="critical">
@@ -596,7 +560,7 @@ export function RuleForm({
                   }
                   onMinDaysInput={(event) => setMinDays(getInputValue(event))}
                   onMaxDaysInput={(event) => setMaxDays(getInputValue(event))}
-                  onToggleDay={toggleDay}
+                  onExcludedChange={setExcluded}
                 />
 
                 <StorefrontMessageSection
