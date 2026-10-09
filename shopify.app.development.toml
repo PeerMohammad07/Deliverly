@@ -34,4 +34,4 @@ prefix = "apps"
 subpath = "delivery-estimate"
 
 [auth]
-redirect_urls = [ "https://deliverly-phi.vercel.app/api/auth" ]
+redirect_urls = [ "https://deliverly-phi.vercel.app/auth/callback" ]

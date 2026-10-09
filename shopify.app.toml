@@ -30,10 +30,7 @@ api_version = "2026-07"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
 [auth]
-redirect_urls = [
-  "https://deliverly-phi.vercel.app/auth/callback",
-  "https://deliverly-phi.vercel.app/api/auth",
-]
+redirect_urls = [ "https://deliverly-phi.vercel.app/auth/callback" ]
 
 [build]
 include_config_on_deploy = true
