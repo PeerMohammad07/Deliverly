@@ -3,6 +3,8 @@
   if (window.__deliverlyEtaInit) return;
   window.__deliverlyEtaInit = true;
 
+  // Must match [app_proxy] prefix/subpath in shopify.app.toml. Merchants can
+  // customize the proxy URL per store; that breaks this path (see README).
   var ETA_URL = "/apps/delivery-estimate";
   var GID_RE = /^gid:\/\/shopify\/Product\/\S+$/;
   var NUM_RE = /^\d+$/;

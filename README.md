@@ -211,6 +211,12 @@ Shopify signs and forwards the request to `/api/estimate`. The endpoint validate
 
 The extension does not calculate dates or receive Admin API credentials. It disables browser caching, refreshes when the storefront regains focus, and renders only when an active rule applies. Its styling inherits the theme and wraps safely on narrow screens.
 
+### App Proxy URL
+
+The storefront script requests the fixed path `/apps/delivery-estimate`, which matches the `[app_proxy]` `prefix` and `subpath` in `shopify.app.toml`. Shopify lets merchants customize this URL per store (**Settings → Apps and sales channels → Deliverly → App proxy → Customize URL**), and theme app extensions can't detect the customized value.
+
+**Merchants should not change Deliverly's App Proxy URL.** If it is changed, the estimate request returns a 404 and the ETA stays hidden on product pages. To fix it, reset the App Proxy URL to `/apps/delivery-estimate`.
+
 ## Validation and Error Handling
 
 - Client validation provides immediate feedback.
@@ -246,6 +252,7 @@ The current source passes Prisma validation and generation, PostgreSQL migration
 - Date formatting is currently English (`en-US`).
 - Product collection resolution pages through all of a product's collections, 250 at a time, up to 2,500.
 - Theme placement uses common product-price and add-to-cart selectors, with a product-area fallback.
+- The storefront script uses the fixed App Proxy path `/apps/delivery-estimate`; merchants must not customize the App Proxy URL (see [App Proxy URL](#app-proxy-url)).
 - Country-specific estimates, holidays, blackout dates, and storefront color controls are not implemented.
 - PostgreSQL is required; SQLite is no longer configured.
 - Production deployment requires real application and OAuth redirect URLs in `shopify.app.toml`.

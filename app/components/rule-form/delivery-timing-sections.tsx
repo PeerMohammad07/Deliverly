@@ -81,15 +81,15 @@ export function DeliveryTimingSections({
               inputMode="numeric"
               details="Most business days in transit."
               value={maxDays}
-              error={errors.maxDeliveryDays}
+              error={
+                errors.maxDeliveryDays ??
+                (minGreaterThanMax
+                  ? "Must be the same as or more than Min shipping."
+                  : undefined)
+              }
               onInput={onMaxDaysInput}
             />
           </s-grid>
-          {minGreaterThanMax ? (
-            <s-paragraph tone="critical">
-              Max shipping must be the same or later than min.
-            </s-paragraph>
-          ) : null}
         </s-stack>
       </s-section>
 

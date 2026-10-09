@@ -50,6 +50,13 @@ export type EstimateResult =
   | { enabled: true; message: string; minDate: string; maxDate: string }
   | { enabled: false; message: null; minDate: null; maxDate: null };
 
+const DISABLED_ESTIMATE: EstimateResult = {
+  enabled: false,
+  message: null,
+  minDate: null,
+  maxDate: null,
+};
+
 export class InvalidProductError extends Error {
   constructor() {
     super("Invalid or missing product identifier");
@@ -160,20 +167,26 @@ export async function getDeliveryEstimate(input: {
   }
   if (!isProductGid(productId)) throw new InvalidProductError();
 
-  let collectionIds: string[] = [];
-  let timeZone = "UTC";
-  if (admin && typeof admin.graphql === "function") {
-    try {
-      const context = await fetchProductContext(admin, productId);
-      collectionIds = context.collectionIds;
-      timeZone = context.timeZone;
-    } catch (error) {
-      if (error instanceof ProductNotFoundError) throw error;
-      console.error("[storefrontEstimate] product context failed", {
-        shop: normalizedShop,
-        error,
-      });
-    }
+  // Fail closed: without the shop's time zone and the product's
+  // collections we could show a date off by a day or the wrong rule's
+  // estimate, so hide the widget instead of guessing.
+  if (!admin || typeof admin.graphql !== "function") {
+    return DISABLED_ESTIMATE;
+  }
+  let collectionIds: string[];
+  let timeZone: string;
+  try {
+    ({ collectionIds, timeZone } = await fetchProductContext(
+      admin,
+      productId,
+    ));
+  } catch (error) {
+    if (error instanceof ProductNotFoundError) throw error;
+    console.error("[storefrontEstimate] product context failed", {
+      shop: normalizedShop,
+      error,
+    });
+    return DISABLED_ESTIMATE;
   }
 
   const rule = await resolveDeliveryRule({
@@ -181,9 +194,7 @@ export async function getDeliveryEstimate(input: {
     productId,
     collectionIds,
   });
-  if (!rule) {
-    return { enabled: false, message: null, minDate: null, maxDate: null };
-  }
+  if (!rule) return DISABLED_ESTIMATE;
 
   const { minDate, maxDate } = calculateDeliveryRange({
     from: getCalendarDateInTimeZone(new Date(), timeZone),
