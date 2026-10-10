@@ -1,0 +1,107 @@
+/*
+ * Only what Polaris web components don't provide: a progress bar, the
+ * large metric value, and the numbered priority badge. Values follow the
+ * Shopify admin palette so they sit naturally next to Polaris components.
+ */
+
+.progressTrack {
+  position: relative;
+  flex: 0 0 auto;
+  width: 200px;
+  height: 6px;
+  border-radius: 999px;
+  background: #e3e3e3;
+  overflow: hidden;
+}
+
+.progressTrackCompact {
+  width: 160px;
+}
+
+.progressFill {
+  height: 100%;
+  min-width: 6px;
+  border-radius: 999px;
+  background: #303030;
+  transition: width 200ms ease;
+}
+
+.metricValue {
+  display: block;
+  margin: 4px 0 2px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+  color: #303030;
+}
+
+.metricValueEmpty {
+  color: #8a8a8a;
+}
+
+.stepNumber {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #f1f1f1;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  color: #303030;
+}
+
+.priorityList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * Grids that need minmax(0, 1fr). Polaris splits responsive grid values
+ * on commas, so the comma inside minmax() breaks s-grid's parsing and
+ * the layout collapses to a single column.
+ */
+
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+
+.completeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.stepRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .mainGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .completeRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Semibold label weight from the design; s-text type="strong" renders regular. */
+.strong {
+  font-weight: 650;
+}

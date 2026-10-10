@@ -17,6 +17,8 @@ import { OverviewCards } from "../components/dashboard/overview-cards";
 import { RecentRules } from "../components/dashboard/recent-rules";
 import { SetupGuide } from "../components/dashboard/setup-guide";
 import { StorefrontDisplay } from "../components/dashboard/storefront-display";
+import { RulePriority } from "../components/dashboard/rule-priority";
+import styles from "../components/dashboard/dashboard.module.css";
 
 function setupEtaKey(shop: string) {
   return `deliverly.setup.etaConfirmed.${shop}`;
@@ -100,6 +102,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       stats: {
         total: rules.length,
         active: rules.filter((r) => r.enabled).length,
+        default: rules.filter((r) => r.type === "DEFAULT").length,
         product: rules.filter((r) => r.type === "PRODUCT").length,
         collection: rules.filter((r) => r.type === "COLLECTION").length,
       },
@@ -188,17 +191,28 @@ export default function Dashboard() {
 
   const completedSteps =
     Number(embedEnabled) + Number(hasRule) + Number(etaConfirmed);
-  const targetedRules = stats.product + stats.collection;
   const loadingRules =
     navigation.state !== "idle" &&
     navigation.location?.pathname.startsWith("/app/rules");
 
   return (
     <s-page heading="Dashboard">
+      <s-button slot="secondary-actions" href="/app/rules">
+        View rules
+      </s-button>
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        icon="plus"
+        href="/app/rules/new"
+      >
+        Create rule
+      </s-button>
       <s-stack direction="block" gap="base">
         <s-paragraph color="subdued">
-          Get a quick overview of your delivery estimates and storefront setup.
+          Your delivery estimates and storefront setup at a glance.
         </s-paragraph>
+
         <SetupGuide
           hidden={hidden}
           open={open}
@@ -224,20 +238,22 @@ export default function Dashboard() {
         <OverviewCards
           totalRules={stats.total}
           activeRules={stats.active}
-          targetedRules={targetedRules}
+          defaultRules={stats.default}
+          productRules={stats.product}
+          collectionRules={stats.collection}
         />
 
-        <RecentRules
-          rules={recent}
-          loading={loadingRules}
-          onViewAll={() => navigate("/app/rules")}
-        />
-
-        <StorefrontDisplay
-          embedEnabled={embedEnabled}
-          editorUrl={appEmbed.editorUrl}
-          manageUrl={appEmbed.manageUrl}
-        />
+        <div className={styles.mainGrid}>
+          <RecentRules rules={recent} loading={loadingRules} />
+          <s-stack direction="block" gap="base">
+            <StorefrontDisplay
+              embedEnabled={embedEnabled}
+              editorUrl={appEmbed.editorUrl}
+              manageUrl={appEmbed.manageUrl}
+            />
+            <RulePriority />
+          </s-stack>
+        </div>
       </s-stack>
     </s-page>
   );
