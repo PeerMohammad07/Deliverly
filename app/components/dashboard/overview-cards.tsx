@@ -32,11 +32,15 @@ function MetricCard({
         </s-text>
         {empty ? null : <s-icon type="chevron-right" size="small" />}
       </s-stack>
-      <span
-        className={`${styles.metricValue} ${empty ? styles.metricValueEmpty : ""}`}
-      >
-        {value}
-      </span>
+      <s-box paddingBlock="small-300">
+        <s-number
+          fontSize="large-100"
+          fontWeight="bold"
+          color={empty ? "subdued" : "base"}
+        >
+          {value}
+        </s-number>
+      </s-box>
       <s-text color="subdued">{detail}</s-text>
     </s-stack>
   );

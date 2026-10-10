@@ -1,43 +1,8 @@
 /*
- * Only what Polaris web components don't provide: a progress bar, the
- * large metric value, and the numbered priority badge. Values follow the
+ * Only what Polaris web components don't provide: the numbered priority
+ * badge and a few layout helpers. Values follow the
  * Shopify admin palette so they sit naturally next to Polaris components.
  */
-
-.progressTrack {
-  position: relative;
-  flex: 0 0 auto;
-  width: 200px;
-  height: 6px;
-  border-radius: 999px;
-  background: #e3e3e3;
-  overflow: hidden;
-}
-
-.progressTrackCompact {
-  width: 160px;
-}
-
-.progressFill {
-  height: 100%;
-  min-width: 6px;
-  border-radius: 999px;
-  background: #303030;
-  transition: width 200ms ease;
-}
-
-.metricValue {
-  display: block;
-  margin: 4px 0 2px;
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 28px;
-  color: #303030;
-}
-
-.metricValueEmpty {
-  color: #8a8a8a;
-}
 
 .stepNumber {
   display: inline-flex;

@@ -13,7 +13,6 @@ import {
   type RuleListStatus,
 } from "../repositories/deliveryRule.repository.server";
 import {
-  formatExcludedDaysLabel,
   serializeExcludedDays,
   serializeMessageParts,
 } from "../utils/delivery-dates";
@@ -107,7 +106,6 @@ export type DisplayRule = DeliveryRuleWithTargets & {
   displayEta: string;
   displayTargets: string;
   displayTypeLabel: string;
-  displayExcluded: string;
 };
 
 /**
@@ -228,7 +226,6 @@ export function toDisplayRule(rule: DeliveryRuleWithTargets): DisplayRule {
     displayEta: formatEtaRange(rule.minDeliveryDays, rule.maxDeliveryDays),
     displayTargets: formatTargets(rule),
     displayTypeLabel: formatRuleTypeLabel(rule.type),
-    displayExcluded: formatExcludedDaysLabel(rule.excludedDays),
   };
 }
 

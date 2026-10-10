@@ -177,24 +177,6 @@ export function formatDeliveryDays(workingDays: number[]): string {
 }
 
 /**
- * Table-friendly "Excluded days" label from the stored value:
- * "None" when everything delivers, otherwise "Sat, Sun".
- */
-export function formatExcludedDaysLabel(
-  excludedDays: Set<number> | number[] | string | undefined,
-): string {
-  const excluded =
-    excludedDays instanceof Set
-      ? excludedDays
-      : parseExcludedDays(excludedDays ?? []);
-  if (excluded.size === 0) return "None";
-  return [...excluded]
-    .sort((a, b) => a - b)
-    .map((day) => SHORT_DAY_NAMES[day])
-    .join(", ");
-}
-
-/**
  * Add N business days to a date, skipping excluded weekdays.
  *
  * Explicit contract:

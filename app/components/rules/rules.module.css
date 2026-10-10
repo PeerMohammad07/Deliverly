@@ -1,0 +1,138 @@
+/*
+ * Only what Polaris web components don't provide: status pills, the
+ * working-day chips, the empty-state illustration and the priority bar.
+ * Values follow the Shopify admin palette, like dashboard.module.css.
+ */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+}
+
+.pills {
+  display: flex;
+  gap: 4px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 16px;
+  color: #303030;
+  cursor: pointer;
+}
+
+.pill:hover {
+  background: #f1f1f1;
+}
+
+.pill:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+
+.pillSelected,
+.pillSelected:hover {
+  background: #e3e3e3;
+}
+
+.pillCount {
+  font-weight: 450;
+  color: #616161;
+}
+
+.search {
+  flex: 0 1 280px;
+  min-width: 200px;
+}
+
+@media (max-width: 490px) {
+  .search {
+    flex-basis: 100%;
+  }
+}
+
+.strong {
+  font-weight: 650;
+}
+
+.days {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.day {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: #e3e3e3;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  color: #303030;
+}
+
+.dayOff {
+  border-color: #cccccc;
+  border-style: dashed;
+  background: transparent;
+  font-weight: 450;
+  color: #616161;
+  text-decoration: line-through;
+}
+
+.illustration {
+  display: block;
+  width: 120px;
+  height: 92px;
+}
+
+.emptyText {
+  max-width: 420px;
+  text-align: center;
+}
+
+.priority {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.priorityChip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f1f1;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 16px;
+  color: #303030;
+}
+
+.priorityList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.priorityItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

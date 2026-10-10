@@ -4,6 +4,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate } from "../shopify.server";
+import { POLARIS_URL } from "../polaris";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -14,7 +15,7 @@ export default function App() {
   const { apiKey } = useLoaderData<typeof loader>();
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
+    <AppProvider apiKey={apiKey} polarisUrl={POLARIS_URL}>
       <s-app-nav>
         {/* rel="home" makes the app name open /app and hides this item from
             the nav; spread because @shopify/polaris-types lacks `rel`. */}

@@ -16,21 +16,12 @@ interface RecentRulesProps {
 
 export function RecentRules({ rules, loading }: RecentRulesProps) {
   return (
-    <s-section padding="none">
-      <s-box padding="base">
-        <s-stack
-          direction="inline"
-          alignItems="center"
-          justifyContent="space-between"
-          gap="base"
-        >
-          <s-heading>Recent rules</s-heading>
-          {rules.length > 0 ? (
-            <s-link href="/app/rules">View all rules</s-link>
-          ) : null}
-        </s-stack>
-      </s-box>
-      <s-divider />
+    <s-section heading="Recent rules" padding="none">
+      {rules.length > 0 ? (
+        <s-link slot="secondary-actions" href="/app/rules">
+          View all rules
+        </s-link>
+      ) : null}
       {rules.length > 0 ? (
         <s-table variant="auto" loading={loading}>
           <s-table-header-row>
@@ -72,25 +63,20 @@ export function RecentRules({ rules, loading }: RecentRulesProps) {
           </s-table-body>
         </s-table>
       ) : (
-        <s-box padding="large">
-          <s-stack direction="block" gap="base" alignItems="center">
-            <s-box padding="small" background="subdued" borderRadius="base">
-              <s-icon type="calendar" />
-            </s-box>
-            <div className={styles.emptyText}>
-              <s-stack direction="block" gap="small-100" alignItems="center">
-                <s-heading>No delivery rules yet</s-heading>
-                <s-paragraph color="subdued">
-                  Create a rule to start showing estimated delivery dates on
-                  your storefront.
-                </s-paragraph>
-              </s-stack>
-            </div>
-            <s-button variant="secondary" href="/app/rules/new">
-              Create rule
-            </s-button>
-          </s-stack>
-        </s-box>
+        <s-empty-state heading="No delivery rules yet">
+          <s-icon slot="graphic" type="calendar" />
+          <s-text slot="subheading">
+            Create a rule to start showing estimated delivery dates on your
+            storefront.
+          </s-text>
+          <s-button
+            slot="secondary-actions"
+            variant="secondary"
+            href="/app/rules/new"
+          >
+            Create rule
+          </s-button>
+        </s-empty-state>
       )}
     </s-section>
   );

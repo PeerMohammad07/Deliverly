@@ -28,18 +28,14 @@ function ProgressBar({
   completed: number;
   compact?: boolean;
 }) {
-  const percent = Math.round((completed / TOTAL_STEPS) * 100);
   return (
-    <div
-      className={`${styles.progressTrack} ${compact ? styles.progressTrackCompact : ""}`}
-      role="progressbar"
-      aria-label="Setup progress"
-      aria-valuemin={0}
-      aria-valuemax={TOTAL_STEPS}
-      aria-valuenow={completed}
-    >
-      <div className={styles.progressFill} style={{ width: `${percent}%` }} />
-    </div>
+    <s-box inlineSize={compact ? "160px" : "200px"}>
+      <s-progress
+        value={completed}
+        max={TOTAL_STEPS}
+        accessibilityLabel="Setup progress"
+      />
+    </s-box>
   );
 }
 

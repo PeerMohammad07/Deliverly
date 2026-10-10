@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="92" viewBox="0 0 120 92" fill="none">
+  <rect x="2" y="8" width="76" height="72" rx="8" fill="#f1f1f1"/>
+  <path d="M2 16a8 8 0 0 1 8-8h60a8 8 0 0 1 8 8v8H2z" fill="#e3e3e3"/>
+  <rect x="21" y="0" width="3" height="16" rx="1.5" fill="#8a8a8a"/>
+  <rect x="56" y="0" width="3" height="16" rx="1.5" fill="#8a8a8a"/>
+  <g fill="#d4d4d4">
+    <rect x="14" y="34" width="10" height="8" rx="2"/>
+    <rect x="30" y="34" width="10" height="8" rx="2"/>
+    <rect x="46" y="34" width="10" height="8" rx="2"/>
+    <rect x="14" y="48" width="10" height="8" rx="2"/>
+    <rect x="46" y="48" width="10" height="8" rx="2"/>
+    <rect x="14" y="62" width="10" height="8" rx="2"/>
+    <rect x="30" y="62" width="10" height="8" rx="2"/>
+    <rect x="46" y="62" width="10" height="8" rx="2"/>
+  </g>
+  <rect x="30" y="48" width="10" height="8" rx="2" fill="#303030"/>
+  <g fill="#fff" stroke="#303030" stroke-width="2.5" stroke-linejoin="round">
+    <path d="M63 58a4 4 0 0 1 4-4h28a4 4 0 0 1 4 4v20H63z"/>
+    <path d="M99 62h10l8 9v7H99z"/>
+    <circle cx="74" cy="82" r="6"/>
+    <circle cx="108" cy="82" r="6"/>
+  </g>
+</svg>

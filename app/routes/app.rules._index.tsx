@@ -5,12 +5,7 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import {
-  data,
-  useLoaderData,
-  useNavigate,
-  useNavigation,
-} from "react-router";
+import { data, useLoaderData, useNavigate, useNavigation } from "react-router";
 import { authenticate } from "../shopify.server";
 import {
   getRulePageForShop,
@@ -18,6 +13,11 @@ import {
 } from "../services/deliveryRule.service.server";
 import { handleRuleRowAction } from "../services/rule-row-action.server";
 import { useRuleRowActions } from "../hooks/use-rule-row-actions";
+import { parseExcludedDays } from "../utils/delivery-dates";
+import { RulesEmptyState } from "../components/rules/rules-empty-state";
+import { RulePriorityBar } from "../components/rules/rule-priority-bar";
+import { WorkingDays } from "../components/rules/working-days";
+import styles from "../components/rules/rules.module.css";
 
 const PAGE_SIZE = 10;
 
@@ -78,7 +78,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         eta: display.displayEta,
         targets: display.displayTargets,
         processingDays: display.processingDays,
-        excluded: display.displayExcluded,
+        kind: display.displayTypeLabel,
+        isDefault: display.type === "DEFAULT",
+        excludedDays: [...parseExcludedDays(display.excludedDays)],
         enabled: display.enabled,
       };
     });
@@ -121,13 +123,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return data(await handleRuleRowAction(shop, formData));
 };
 
+type RuleStatus = "all" | "active" | "inactive";
+
 type RuleRow = ReturnType<typeof useLoaderData<typeof loader>>["rules"][number];
 
-function buildRulesUrl(
-  status: "all" | "active" | "inactive",
-  query: string,
-  page = 1,
-): string {
+function buildRulesUrl(status: RuleStatus, query: string, page = 1): string {
   const params = new URLSearchParams();
   if (status !== "all") params.set("status", status);
   if (query.trim()) params.set("q", query.trim());
@@ -136,25 +136,67 @@ function buildRulesUrl(
   return search ? `/app/rules?${search}` : "/app/rules";
 }
 
-function EmptyState() {
+const STATUS_TABS: { value: RuleStatus; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+];
+
+function processingLabel(days: number) {
+  if (days === 0) return "No processing delay";
+  return `+${days} processing day${days === 1 ? "" : "s"}`;
+}
+
+/**
+ * Lives in the table body: Polaris shows it only when the body has no
+ * rows and the table isn't loading, spanning every column.
+ */
+function NoResults({
+  query,
+  status,
+  onClearSearch,
+  onViewAll,
+}: {
+  query: string;
+  status: RuleStatus;
+  onClearSearch: () => void;
+  onViewAll: () => void;
+}) {
+  const scope = status === "all" ? "rules" : `${status} rules`;
+  const searching = query.trim() !== "";
   return (
-    <s-box border="base" borderRadius="base" background="base" padding="large">
-      <s-stack direction="block" gap="base" alignItems="center">
-        <s-box padding="small" background="subdued" borderRadius="base">
-          <s-icon type="calendar" />
-        </s-box>
-        <s-stack direction="block" gap="small-100" alignItems="center">
-          <s-heading>No delivery rules yet</s-heading>
-          <s-paragraph color="subdued">
-            Create a rule to start showing estimated delivery dates on your
-            storefront.
-          </s-paragraph>
-        </s-stack>
-        <s-button variant="primary" icon="plus" href="/app/rules/new">
-          Create rule
+    <s-empty-state
+      heading={
+        searching ? `No ${scope} match “${query.trim()}”` : `No ${scope}`
+      }
+    >
+      <s-icon slot="graphic" type="search" />
+      <s-text slot="subheading">
+        {searching
+          ? "Try another search, or check all rules."
+          : "Change the filter to see your other rules."}
+      </s-text>
+      {searching ? (
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          type="button"
+          onClick={onClearSearch}
+        >
+          Clear search
         </s-button>
-      </s-stack>
-    </s-box>
+      ) : null}
+      {status !== "all" ? (
+        <s-button
+          slot="secondary-actions"
+          variant="secondary"
+          type="button"
+          onClick={onViewAll}
+        >
+          View all rules
+        </s-button>
+      ) : null}
+    </s-empty-state>
   );
 }
 
@@ -171,55 +213,49 @@ function RulesTable({
   onDelete,
   onQueryChange,
   onStatusChange,
+  onViewAll,
   onPreviousPage,
   onNextPage,
 }: {
   rules: RuleRow[];
   busyId: string;
   query: string;
-  status: "all" | "active" | "inactive";
-  counts: { all: number; active: number; inactive: number };
+  status: RuleStatus;
+  counts: Record<RuleStatus, number>;
   loading: boolean;
   hasPreviousPage: boolean;
   hasNextPage: boolean;
   onToggle: (rule: Pick<RuleRow, "id">) => void;
   onDelete: (rule: Pick<RuleRow, "id" | "name">) => void;
   onQueryChange: (value: string) => void;
-  onStatusChange: (value: "all" | "active" | "inactive") => void;
+  onStatusChange: (value: RuleStatus) => void;
+  onViewAll: () => void;
   onPreviousPage: () => void;
   onNextPage: () => void;
 }) {
   return (
-    <s-box
-      border="base"
-      borderRadius="base"
-      background="base"
-      overflow="hidden"
-    >
-      <s-box padding="base">
-        <s-stack
-          direction="inline"
-          gap="base"
-          alignItems="center"
-          justifyContent="space-between"
+    <s-section padding="none" accessibilityLabel="Rules">
+      <div className={styles.toolbar}>
+        <div
+          className={styles.pills}
+          role="group"
+          aria-label="Filter by status"
         >
-          <s-heading>Rules</s-heading>
-          <s-button
-            variant="primary"
-            icon="plus"
-            href="/app/rules/new"
-          >
-            Create rule
-          </s-button>
-        </s-stack>
-      </s-box>
-      <s-divider direction="inline" />
-      <s-box padding="base">
-        <s-grid
-          gridTemplateColumns="@container (inline-size <= 500px) 1fr, minmax(0, 1fr) 200px"
-          gap="small-200"
-          alignItems="center"
-        >
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              className={`${styles.pill} ${status === tab.value ? styles.pillSelected : ""}`}
+              aria-pressed={status === tab.value}
+              aria-label={`${tab.label} (${counts[tab.value]})`}
+              onClick={() => onStatusChange(tab.value)}
+            >
+              {tab.label}
+              <span className={styles.pillCount}>{counts[tab.value]}</span>
+            </button>
+          ))}
+        </div>
+        <div className={styles.search}>
           <s-search-field
             label="Search rules"
             labelAccessibilityVisibility="exclusive"
@@ -235,151 +271,127 @@ function RulesTable({
               );
             }}
           />
-          <s-select
-            label="Filter rules by status"
-            labelAccessibilityVisibility="exclusive"
-            name="rule-status"
-            value={status}
-            onChange={(event: unknown) => {
-              const target = (event as { target?: { value?: unknown } })
-                ?.target;
-              const value = target?.value;
-              if (
-                value === "all" ||
-                value === "active" ||
-                value === "inactive"
-              ) {
-                onStatusChange(value);
-              }
-            }}
-          >
-            <s-option value="all">All rules ({counts.all})</s-option>
-            <s-option value="active">Active ({counts.active})</s-option>
-            <s-option value="inactive">Inactive ({counts.inactive})</s-option>
-          </s-select>
-        </s-grid>
-      </s-box>
-      <s-divider direction="inline" />
-      {rules.length > 0 ? (
-        <s-table
-          variant="auto"
-          loading={loading}
-          paginate={hasPreviousPage || hasNextPage}
-          hasPreviousPage={hasPreviousPage}
-          hasNextPage={hasNextPage}
-          onPreviousPage={onPreviousPage}
-          onNextPage={onNextPage}
-        >
-          <s-table-header-row>
-            <s-table-header listSlot="primary">Rule</s-table-header>
-            <s-table-header listSlot="labeled">Applies to</s-table-header>
-            <s-table-header listSlot="labeled">
-              Delivery estimate
-            </s-table-header>
-            <s-table-header listSlot="labeled">Excluded days</s-table-header>
-            <s-table-header listSlot="labeled">Status</s-table-header>
-            <s-table-header listSlot="inline">Actions</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {rules.map((rule) => {
-              const busy = busyId === rule.id;
-              const processing =
-                rule.processingDays === 0
-                  ? "No processing delay"
-                  : `${rule.processingDays} processing day${rule.processingDays === 1 ? "" : "s"}`;
-              return (
-                <s-table-row key={rule.id}>
-                  <s-table-cell>
-                    <s-text type="strong">{rule.name}</s-text>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-paragraph>{rule.targets}</s-paragraph>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-stack direction="block" gap="none">
-                      <s-text type="strong">{rule.eta}</s-text>
-                      <s-text color="subdued">{processing}</s-text>
-                    </s-stack>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-paragraph color="subdued">{rule.excluded}</s-paragraph>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-badge
-                      tone={rule.enabled ? "success" : undefined}
-                      color="base"
-                    >
-                      {rule.enabled ? "Active" : "Inactive"}
+        </div>
+      </div>
+      <s-divider />
+      <s-table
+        variant="auto"
+        loading={loading}
+        paginate={hasPreviousPage || hasNextPage}
+        hasPreviousPage={hasPreviousPage}
+        hasNextPage={hasNextPage}
+        onPreviousPage={onPreviousPage}
+        onNextPage={onNextPage}
+      >
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Rule</s-table-header>
+          <s-table-header listSlot="labeled">Applies to</s-table-header>
+          <s-table-header listSlot="labeled">Delivery estimate</s-table-header>
+          <s-table-header listSlot="labeled">Working days</s-table-header>
+          <s-table-header listSlot="inline">Status</s-table-header>
+          <s-table-header listSlot="inline">
+            <s-text accessibilityVisibility="exclusive">Actions</s-text>
+          </s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {rules.map((rule) => {
+            const busy = busyId === rule.id;
+            const menuId = `rule-actions-${rule.id}`;
+            return (
+              <s-table-row key={rule.id}>
+                <s-table-cell>
+                  <s-stack
+                    direction="inline"
+                    gap="small-200"
+                    alignItems="center"
+                  >
+                    <s-text>
+                      <span className={styles.strong}>{rule.name}</span>
+                    </s-text>
+                    <s-badge tone={rule.isDefault ? "info" : undefined}>
+                      {rule.kind}
                     </s-badge>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-button
-                      type="button"
-                      variant="tertiary"
-                      icon="menu-vertical"
-                      accessibilityLabel={`Actions for ${rule.name}`}
-                      loading={busy}
-                      disabled={Boolean(busyId) && !busy}
-                      commandFor={`rule-actions-${rule.id}`}
-                      command="--show"
-                    />
-                    <s-menu
-                      id={`rule-actions-${rule.id}`}
-                      accessibilityLabel={`Actions for ${rule.name}`}
-                    >
+                  </s-stack>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text>{rule.targets}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-stack direction="block" gap="none">
+                    <s-text>
+                      <span className={styles.strong}>{rule.eta}</span>
+                    </s-text>
+                    <s-text color="subdued">
+                      {processingLabel(rule.processingDays)}
+                    </s-text>
+                  </s-stack>
+                </s-table-cell>
+                <s-table-cell>
+                  <WorkingDays excludedDays={rule.excludedDays} />
+                </s-table-cell>
+                <s-table-cell>
+                  <s-badge
+                    icon="bullet"
+                    tone={rule.enabled ? "success" : undefined}
+                  >
+                    {rule.enabled ? "Active" : "Inactive"}
+                  </s-badge>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-button
+                    type="button"
+                    variant="tertiary"
+                    icon="menu-horizontal"
+                    accessibilityLabel={`Actions for ${rule.name}`}
+                    loading={busy}
+                    disabled={Boolean(busyId) && !busy}
+                    commandFor={menuId}
+                    command="--show"
+                  />
+                  <s-menu
+                    id={menuId}
+                    accessibilityLabel={`Actions for ${rule.name}`}
+                  >
+                    <s-section>
                       <s-button icon="edit" href={`/app/rules/${rule.id}`}>
                         Edit rule
                       </s-button>
                       <s-button
                         type="button"
-                        icon={rule.enabled ? "x" : "check"}
-                        commandFor={`rule-actions-${rule.id}`}
+                        icon={rule.enabled ? "minus-circle" : "check-circle"}
+                        commandFor={menuId}
                         command="--hide"
                         onClick={() => onToggle(rule)}
                       >
                         {rule.enabled ? "Deactivate" : "Activate"}
                       </s-button>
+                    </s-section>
+                    <s-section>
                       <s-button
                         type="button"
                         tone="critical"
                         icon="delete"
-                        commandFor={`rule-actions-${rule.id}`}
+                        commandFor={menuId}
                         command="--hide"
                         onClick={() => onDelete(rule)}
                       >
                         Delete
                       </s-button>
-                    </s-menu>
-                  </s-table-cell>
-                </s-table-row>
-              );
-            })}
-          </s-table-body>
-        </s-table>
-      ) : (
-        <s-box padding="large">
-          <s-stack direction="block" gap="small-200" alignItems="center">
-            <s-text type="strong">
-              {query.trim() ? "No matching rules" : `No ${status} rules`}
-            </s-text>
-            <s-paragraph color="subdued">
-              {query.trim()
-                ? "Try another search or clear your search."
-                : "Change the status filter to view other rules."}
-            </s-paragraph>
-            <s-button
-              type="button"
-              variant="tertiary"
-              onClick={() =>
-                query.trim() ? onQueryChange("") : onStatusChange("all")
-              }
-            >
-              {query.trim() ? "Clear search" : "View all rules"}
-            </s-button>
-          </s-stack>
-        </s-box>
-      )}
-    </s-box>
+                    </s-section>
+                  </s-menu>
+                </s-table-cell>
+              </s-table-row>
+            );
+          })}
+          <NoResults
+            query={query}
+            status={status}
+            onClearSearch={() => onQueryChange("")}
+            onViewAll={onViewAll}
+          />
+        </s-table-body>
+      </s-table>
+    </s-section>
   );
 }
 
@@ -414,7 +426,9 @@ export default function EtaRulesPage() {
     if (!notice || shownNotice.current === notice) return;
     shownNotice.current = notice;
     shopify.toast.show(
-      notice === "created" ? "Delivery rule created." : "Delivery rule updated.",
+      notice === "created"
+        ? "Delivery rule created."
+        : "Delivery rule updated.",
     );
     void navigate(buildRulesUrl(status, loadedQuery, page), { replace: true });
   }, [loadedQuery, navigate, notice, page, shopify, status]);
@@ -450,12 +464,22 @@ export default function EtaRulesPage() {
     });
   }
 
-  function changeStatus(nextStatus: "all" | "active" | "inactive") {
+  function changeStatus(nextStatus: RuleStatus) {
     void navigate(buildRulesUrl(nextStatus, query));
   }
 
   return (
     <s-page heading="ETA rules">
+      {hasRules ? (
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          icon="plus"
+          href="/app/rules/new"
+        >
+          Create rule
+        </s-button>
+      ) : null}
       <s-stack direction="block" gap="base">
         <s-paragraph color="subdued">
           Manage the delivery estimates shown to your customers.
@@ -473,7 +497,7 @@ export default function EtaRulesPage() {
         ) : null}
 
         {hasRules ? (
-          <s-stack direction="block" gap="base">
+          <>
             <RulesTable
               rules={rules}
               busyId={busyId}
@@ -487,6 +511,10 @@ export default function EtaRulesPage() {
               onDelete={openDeleteModal}
               onQueryChange={setQuery}
               onStatusChange={changeStatus}
+              // Navigate only: clearing local query here would arm the
+              // search debounce, which could replace this navigation
+              // with the old status. The loadedQuery effect resets it.
+              onViewAll={() => void navigate(buildRulesUrl("all", ""))}
               onPreviousPage={() =>
                 void navigate(buildRulesUrl(status, query, page - 1))
               }
@@ -494,20 +522,10 @@ export default function EtaRulesPage() {
                 void navigate(buildRulesUrl(status, query, page + 1))
               }
             />
-            <s-stack
-              direction="inline"
-              gap="small-100"
-              alignItems="center"
-              justifyContent="center"
-            >
-              <s-icon type="info" size="small" />
-              <s-paragraph color="subdued">
-                Priority: Product rules → Collection rules → All products
-              </s-paragraph>
-            </s-stack>
-          </s-stack>
+            <RulePriorityBar />
+          </>
         ) : (
-          <EmptyState />
+          <RulesEmptyState />
         )}
       </s-stack>
 
