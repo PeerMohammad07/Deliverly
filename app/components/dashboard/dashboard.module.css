@@ -70,9 +70,3 @@
 .strong {
   font-weight: 650;
 }
-
-/* Empty-state copy wraps to two centered lines, as in the design. */
-.emptyText {
-  max-width: 360px;
-  text-align: center;
-}

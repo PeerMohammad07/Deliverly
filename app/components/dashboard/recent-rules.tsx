@@ -70,8 +70,8 @@ export function RecentRules({ rules, loading }: RecentRulesProps) {
             storefront.
           </s-text>
           <s-button
-            slot="secondary-actions"
-            variant="secondary"
+            slot="primary-action"
+            variant="primary"
             href="/app/rules/new"
           >
             Create rule

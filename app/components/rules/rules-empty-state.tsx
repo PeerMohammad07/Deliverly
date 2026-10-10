@@ -6,6 +6,7 @@ export function RulesEmptyState() {
           slot="graphic"
           src="/images/eta-rules-empty.svg"
           alt=""
+          accessibilityRole="presentation"
           inlineSize="auto"
         />
         <s-text slot="subheading">

@@ -383,12 +383,14 @@ function RulesTable({
               </s-table-row>
             );
           })}
-          <NoResults
-            query={query}
-            status={status}
-            onClearSearch={() => onQueryChange("")}
-            onViewAll={onViewAll}
-          />
+          {rules.length === 0 ? (
+            <NoResults
+              query={query}
+              status={status}
+              onClearSearch={() => onQueryChange("")}
+              onViewAll={onViewAll}
+            />
+          ) : null}
         </s-table-body>
       </s-table>
     </s-section>
@@ -423,13 +425,16 @@ export default function EtaRulesPage() {
     shopify.saveBar.hide("rule-form-save-bar").catch((error) => {
       console.warn("[app.rules] stale save bar cleanup failed", error);
     });
-    if (!notice || shownNotice.current === notice) return;
-    shownNotice.current = notice;
-    shopify.toast.show(
-      notice === "created"
-        ? "Delivery rule created."
-        : "Delivery rule updated.",
-    );
+    if (!notice) return;
+    if (shownNotice.current !== notice) {
+      shownNotice.current = notice;
+      shopify.toast.show(
+        notice === "created"
+          ? "Delivery rule created."
+          : "Delivery rule updated.",
+      );
+    }
+    // Always strip the param: `loading` stays true while it's present.
     void navigate(buildRulesUrl(status, loadedQuery, page), { replace: true });
   }, [loadedQuery, navigate, notice, page, shopify, status]);
 

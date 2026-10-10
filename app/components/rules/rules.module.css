@@ -1,6 +1,6 @@
 /*
  * Only what Polaris web components don't provide: status pills, the
- * working-day chips, the empty-state illustration and the priority bar.
+ * working-day chips and the priority bar.
  * Values follow the Shopify admin palette, like dashboard.module.css.
  */
 
@@ -95,17 +95,6 @@
   font-weight: 450;
   color: #616161;
   text-decoration: line-through;
-}
-
-.illustration {
-  display: block;
-  width: 120px;
-  height: 92px;
-}
-
-.emptyText {
-  max-width: 420px;
-  text-align: center;
 }
 
 .priority {
