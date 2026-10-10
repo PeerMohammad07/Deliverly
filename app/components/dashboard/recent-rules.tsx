@@ -77,13 +77,15 @@ export function RecentRules({ rules, loading }: RecentRulesProps) {
             <s-box padding="small" background="subdued" borderRadius="base">
               <s-icon type="calendar" />
             </s-box>
-            <s-stack direction="block" gap="small-100" alignItems="center">
-              <s-heading>No delivery rules yet</s-heading>
-              <s-paragraph color="subdued">
-                Create a rule to start showing estimated delivery dates on your
-                storefront.
-              </s-paragraph>
-            </s-stack>
+            <div className={styles.emptyText}>
+              <s-stack direction="block" gap="small-100" alignItems="center">
+                <s-heading>No delivery rules yet</s-heading>
+                <s-paragraph color="subdued">
+                  Create a rule to start showing estimated delivery dates on
+                  your storefront.
+                </s-paragraph>
+              </s-stack>
+            </div>
             <s-button variant="secondary" href="/app/rules/new">
               Create rule
             </s-button>
