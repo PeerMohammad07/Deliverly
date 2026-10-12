@@ -1,4 +1,8 @@
 import type { RuleFormErrors } from "../../validators/deliveryRule.validator";
+import {
+  CutoffTimeFields,
+  type CutoffFieldsValue,
+} from "./cutoff-time-fields";
 
 const WEEKDAYS = [
   { value: 0, label: "Sunday" },
@@ -15,7 +19,8 @@ interface DeliveryTimingSectionsProps {
   minDays: string;
   maxDays: string;
   excluded: number[];
-  /** The store cutoff applied to this rule's timing; null = no cutoff. */
+  cutoff: CutoffFieldsValue & { enabled: boolean };
+  /** Worked example for a valid cutoff; null when off or invalid. */
   cutoffSummary: {
     cutoffLabel: string;
     orderDay: string;
@@ -30,6 +35,7 @@ interface DeliveryTimingSectionsProps {
   onMinDaysInput: (event: unknown) => void;
   onMaxDaysInput: (event: unknown) => void;
   onExcludedChange: (days: number[]) => void;
+  onCutoffChange: (cutoff: CutoffFieldsValue & { enabled: boolean }) => void;
 }
 
 export function DeliveryTimingSections({
@@ -37,6 +43,7 @@ export function DeliveryTimingSections({
   minDays,
   maxDays,
   excluded,
+  cutoff,
   cutoffSummary,
   timeZone,
   deliveryDaysLabel,
@@ -46,6 +53,7 @@ export function DeliveryTimingSections({
   onMinDaysInput,
   onMaxDaysInput,
   onExcludedChange,
+  onCutoffChange,
 }: DeliveryTimingSectionsProps) {
   return (
     <>
@@ -100,34 +108,43 @@ export function DeliveryTimingSections({
               onInput={onMaxDaysInput}
             />
           </s-grid>
-          <s-box padding="base" background="subdued" borderRadius="base">
-            {cutoffSummary ? (
-              <s-stack direction="block" gap="small-200">
-                <s-text>
-                  <strong>Order cutoff: {cutoffSummary.cutoffLabel}</strong>{" "}
-                  (store setting, {timeZone})
-                </s-text>
-                <s-text color="subdued">
-                  Ordered {cutoffSummary.orderDay} before{" "}
-                  {cutoffSummary.cutoffLabel}: ships{" "}
-                  {cutoffSummary.shipsBefore === cutoffSummary.orderDay
-                    ? "the same day"
-                    : cutoffSummary.shipsBefore}
-                  . At or after {cutoffSummary.cutoffLabel}: ships{" "}
-                  {cutoffSummary.shipsAfter}.
-                </s-text>
-                <s-link href="/app/settings">Change cutoff in Settings</s-link>
-              </s-stack>
-            ) : (
-              <s-stack direction="block" gap="small-200">
-                <s-text color="subdued">
-                  No order cutoff: orders count from the day they’re placed,
-                  whatever the time.
-                </s-text>
-                <s-link href="/app/settings">Set a cutoff in Settings</s-link>
-              </s-stack>
-            )}
-          </s-box>
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Order cutoff">
+        <s-stack direction="block" gap="base">
+          <s-switch
+            label="Use an order cutoff time"
+            details="Orders placed after this time start processing the next working day."
+            checked={cutoff.enabled}
+            onChange={(event) =>
+              onCutoffChange({
+                ...cutoff,
+                enabled: event.currentTarget.checked,
+              })
+            }
+          />
+          {cutoff.enabled ? (
+            <CutoffTimeFields
+              value={cutoff}
+              timeZone={timeZone}
+              error={errors.cutoffMinutes}
+              onChange={(next) => onCutoffChange({ ...next, enabled: true })}
+            />
+          ) : null}
+          {cutoffSummary ? (
+            <s-box padding="base" background="subdued" borderRadius="base">
+              <s-text color="subdued">
+                Ordered {cutoffSummary.orderDay} before{" "}
+                {cutoffSummary.cutoffLabel}: ships{" "}
+                {cutoffSummary.shipsBefore === cutoffSummary.orderDay
+                  ? "the same day"
+                  : cutoffSummary.shipsBefore}
+                . At or after {cutoffSummary.cutoffLabel}: ships{" "}
+                {cutoffSummary.shipsAfter}.
+              </s-text>
+            </s-box>
+          ) : null}
         </s-stack>
       </s-section>
 

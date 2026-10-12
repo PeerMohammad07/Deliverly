@@ -1,8 +1,9 @@
 {% comment %}
   Deliverly estimated delivery — single source of truth for the ETA UI.
   Rendered once by blocks/app-embed.liquid as an inert template (nothing
-  visible). assets/deliverly-eta.js clones it into the product area, then
-  replaces the message with the real storefront estimate response.
+  visible). assets/deliverly-eta.js (built from storefront/deliverly-eta.js)
+  clones it into the product area, then replaces the message with the
+  real storefront estimate response.
 {% endcomment %}
 <style>
   .deliverly-eta {

@@ -2,10 +2,12 @@
 
 client_id = "e577575aff638a9599807d1be763dfb4"
 name = "Delivery-dev"
-application_url = "https://deliverly-phi.vercel.app"
+application_url = "https://example.com"
 embedded = true
 
 [build]
+# Local development app: `shopify app dev` replaces the placeholder URLs
+# above with its tunnel. Staging is the Deliverly app (shopify.app.toml).
 automatically_update_urls_on_dev = true
 
 [webhooks]
@@ -33,4 +35,4 @@ prefix = "apps"
 subpath = "delivery-estimate"
 
 [auth]
-redirect_urls = [ "https://deliverly-phi.vercel.app/auth/callback" ]
+redirect_urls = [ "https://example.com/auth/callback" ]

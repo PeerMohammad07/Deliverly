@@ -45,6 +45,9 @@ model DeliveryRule {
   maxDeliveryDays Int
   processingDays  Int
   excludedDays    String
+  // Order cutoff in minutes after midnight, in the shop's time zone.
+  // null = no cutoff.
+  cutoffMinutes   Int?
   customMessage   String
   enabled         Boolean      @default(true)
   createdAt       DateTime     @default(now())
@@ -53,15 +56,6 @@ model DeliveryRule {
 
   @@index([shop])
   @@index([shop, type])
-}
-
-/// Store-wide settings, one row per shop.
-model ShopSettings {
-  shop          String   @id
-  /// Order cutoff in minutes after midnight, in the shop's time zone.
-  /// null = no cutoff. Applies to every rule.
-  cutoffMinutes Int?
-  updatedAt     DateTime @updatedAt
 }
 
 model RuleTarget {

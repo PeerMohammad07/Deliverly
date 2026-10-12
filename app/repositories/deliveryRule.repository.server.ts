@@ -28,6 +28,7 @@ export interface CreateRuleData {
   minDeliveryDays: number;
   maxDeliveryDays: number;
   excludedDays: string;
+  cutoffMinutes: number | null;
   customMessage: string;
   enabled: boolean;
   targetIds: string[];
@@ -233,6 +234,7 @@ export async function createRule(
           minDeliveryDays: data.minDeliveryDays,
           maxDeliveryDays: data.maxDeliveryDays,
           excludedDays: data.excludedDays,
+          cutoffMinutes: data.cutoffMinutes,
           customMessage: data.customMessage,
           enabled: data.enabled,
           targets:
@@ -303,6 +305,7 @@ export async function updateRule(
           minDeliveryDays: data.minDeliveryDays,
           maxDeliveryDays: data.maxDeliveryDays,
           excludedDays: data.excludedDays,
+          cutoffMinutes: data.cutoffMinutes,
           customMessage: data.customMessage,
           enabled: data.enabled,
           targets: {

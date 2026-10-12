@@ -12,6 +12,7 @@ const ACTION_VALUE_DEFAULTS: Record<string, string> = {
   minDeliveryDays: "",
   maxDeliveryDays: "",
   excludedDays: "",
+  cutoffMinutes: "",
   msgPrefix: "",
   msgSeparator: "",
   msgSuffix: "",

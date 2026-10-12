@@ -8,7 +8,6 @@ import { data, redirect, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import { createDeliveryRule } from "../services/deliveryRule.service.server";
 import { fetchShopTimeZone } from "../services/shopTimeZone.server";
-import { getShopCutoff } from "../services/shopSettings.server";
 import {
   parseRuleFormData,
   validateRuleInput,
@@ -23,12 +22,8 @@ import {
 } from "../components/rule-form";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
-  const [timeZone, storeCutoff] = await Promise.all([
-    fetchShopTimeZone(admin),
-    getShopCutoff(session.shop),
-  ]);
-  return { timeZone, storeCutoff };
+  const { admin } = await authenticate.admin(request);
+  return { timeZone: await fetchShopTimeZone(admin) };
 };
 
 const CREATE_INITIAL: RuleFormInitial = {
@@ -39,6 +34,7 @@ const CREATE_INITIAL: RuleFormInitial = {
   minDeliveryDays: "3",
   maxDeliveryDays: "5",
   excludedDays: [0, 6],
+  cutoffMinutes: "",
   msgPrefix: DEFAULT_MESSAGE_PARTS.prefix,
   msgSeparator: DEFAULT_MESSAGE_PARTS.separator,
   msgSuffix: DEFAULT_MESSAGE_PARTS.suffix,
@@ -90,12 +86,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function NewEtaRulePage() {
-  const { timeZone, storeCutoff } = useLoaderData<typeof loader>();
+  const { timeZone } = useLoaderData<typeof loader>();
   return (
     <RuleForm
       initial={CREATE_INITIAL}
       timeZone={timeZone}
-      storeCutoff={storeCutoff}
       labels={{
         title: "Create ETA rule",
         subtitle:

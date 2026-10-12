@@ -26,10 +26,13 @@ import {
   formatStorefrontDateWithStyle,
   getZonedNow,
   isStorefrontDateStyle,
+  joinCutoffTime,
   parseExcludedDays,
   resolveOrderStart,
+  splitCutoffMinutes,
   type StorefrontDateStyle,
 } from "../utils/delivery-dates";
+import { type CutoffFieldsValue } from "./rule-form/cutoff-time-fields";
 import { DeliveryTimingSections } from "./rule-form/delivery-timing-sections";
 import { StorefrontMessageSection } from "./rule-form/storefront-message-section";
 import { StorefrontPreview } from "./rule-form/storefront-preview";
@@ -54,6 +57,8 @@ export interface RuleFormInitial {
   minDeliveryDays: string;
   maxDeliveryDays: string;
   excludedDays: number[];
+  /** Minutes after midnight as a string; "" = no cutoff. */
+  cutoffMinutes: string;
   msgPrefix: string;
   msgSeparator: string;
   msgSuffix: string;
@@ -88,6 +93,28 @@ function browserTimeZone(): string {
 /** Countdown shown in the preview when none would run right now. */
 const SAMPLE_COUNTDOWN_SECONDS = 3 * 3600 + 20 * 60;
 
+/** Turning the cutoff on starts at 2:00 PM, a common dispatch cutoff. */
+const DEFAULT_CUTOFF: CutoffFieldsValue = {
+  hour: "2",
+  minute: "00",
+  period: "PM",
+};
+
+/** Saved minutes ("" = off) → the switch plus hour/minute/AM-PM fields. */
+function initCutoff(raw: string): CutoffFieldsValue & { enabled: boolean } {
+  const minutes = raw.trim() === "" ? NaN : Number(raw);
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes >= 24 * 60) {
+    return { enabled: raw.trim() !== "", ...DEFAULT_CUTOFF };
+  }
+  const parts = splitCutoffMinutes(minutes);
+  return {
+    enabled: true,
+    hour: String(parts.hour),
+    minute: String(parts.minute).padStart(2, "0"),
+    period: parts.period,
+  };
+}
+
 function toInt(value: string, fallback: number): number {
   const n = Number(value);
   return Number.isInteger(n) ? n : fallback;
@@ -120,14 +147,11 @@ export function RuleForm({
   initial,
   labels,
   timeZone,
-  storeCutoff,
 }: {
   initial: RuleFormInitial;
   labels: RuleFormLabels;
   /** Shop's IANA time zone; null when it couldn't be loaded. */
   timeZone: string | null;
-  /** Store-wide order cutoff (Settings), in minutes; null = none. */
-  storeCutoff: number | null;
 }) {
   const actionData = useActionData<RuleFormActionData | undefined>();
   const navigate = useNavigate();
@@ -172,6 +196,15 @@ export function RuleForm({
   const [maxDays, setMaxDays] = useState(
     serverValues?.maxDeliveryDays ?? initial.maxDeliveryDays,
   );
+  const [cutoff, setCutoff] = useState(() =>
+    initCutoff(serverValues?.cutoffMinutes ?? initial.cutoffMinutes),
+  );
+  // The rule's cutoff in minutes; null when off or not a valid time yet.
+  const cutoffMinutes = cutoff.enabled
+    ? joinCutoffTime(cutoff.hour, cutoff.minute, cutoff.period)
+    : null;
+  // What gets saved: "" = off, "invalid" makes the validator flag it.
+  const cutoffValue = cutoff.enabled ? String(cutoffMinutes ?? "invalid") : "";
   const [excluded, setExcluded] = useState<number[]>(() =>
     actionData
       ? [...parseExcludedDays(serverValues?.excludedDays ?? "")].sort(
@@ -222,6 +255,7 @@ export function RuleForm({
       minDays: initial.minDeliveryDays,
       maxDays: initial.maxDeliveryDays,
       excluded: [...initial.excludedDays].sort(),
+      cutoff: initial.cutoffMinutes,
       msgPrefix: initial.msgPrefix,
       msgSeparator: initial.msgSeparator,
       msgSuffix: initial.msgSuffix,
@@ -243,6 +277,7 @@ export function RuleForm({
     minDays,
     maxDays,
     excluded: [...excluded].sort(),
+    cutoff: cutoffValue,
     msgPrefix,
     msgSeparator,
     msgSuffix,
@@ -288,7 +323,7 @@ export function RuleForm({
   }, [actionData, shopify]);
 
   const effectiveTimeZone = timeZone ?? browserTimeZone();
-  const hasCutoff = storeCutoff !== null;
+  const hasCutoff = cutoff.enabled;
   // Same steps as the storefront: shop-time "now" → cutoff → date range.
   // With a cutoff, it also works out an order placed before and after it
   // on a working day (today, or the next one), for the preview toggle
@@ -304,7 +339,7 @@ export function RuleForm({
         excludedDays: excludedSet,
       };
       const now = getZonedNow(new Date(), effectiveTimeZone);
-      if (storeCutoff === null) {
+      if (cutoffMinutes === null || cutoffMinutes === 0) {
         return {
           ok: true as const,
           now: calculateDeliveryRange({ ...timing, from: now.date }),
@@ -316,7 +351,7 @@ export function RuleForm({
       nextDay.setDate(nextDay.getDate() + 1);
       const live = resolveOrderStart({
         now,
-        cutoffMinutes: storeCutoff,
+        cutoffMinutes,
         excludedDays: excludedSet,
       });
       return {
@@ -339,7 +374,7 @@ export function RuleForm({
     minDays,
     maxDays,
     excluded,
-    storeCutoff,
+    cutoffMinutes,
     effectiveTimeZone,
   ]);
 
@@ -372,9 +407,9 @@ export function RuleForm({
     : msgPrefix;
 
   const cutoffSummary =
-    storeCutoff !== null && preview.ok && preview.cutoff
+    cutoffMinutes !== null && preview.ok && preview.cutoff
       ? {
-          cutoffLabel: formatCutoffTime(storeCutoff),
+          cutoffLabel: formatCutoffTime(cutoffMinutes),
           orderDay: formatStorefrontDateWithStyle(
             preview.cutoff.orderDay,
             "weekday",
@@ -478,6 +513,7 @@ export function RuleForm({
     fd.append("minDeliveryDays", minDays);
     fd.append("maxDeliveryDays", maxDays);
     for (const d of excluded) fd.append("excludedDays", String(d));
+    fd.append("cutoffMinutes", cutoffValue);
     fd.append("msgPrefix", msgPrefix);
     fd.append("msgSeparator", msgSeparator);
     fd.append("msgSuffix", msgSuffix);
@@ -522,6 +558,7 @@ export function RuleForm({
     minDays,
     maxDays,
     excluded,
+    cutoff,
     msgPrefix,
     msgSeparator,
     msgSuffix,
@@ -567,6 +604,7 @@ export function RuleForm({
     setMinDays(initial.minDeliveryDays);
     setMaxDays(initial.maxDeliveryDays);
     setExcluded(initial.excludedDays);
+    setCutoff(initCutoff(initial.cutoffMinutes));
     setMsgPrefix(initial.msgPrefix);
     setMsgSeparator(initial.msgSeparator);
     setMsgSuffix(initial.msgSuffix);
@@ -697,6 +735,7 @@ export function RuleForm({
                   minDays={minDays}
                   maxDays={maxDays}
                   excluded={excluded}
+                  cutoff={cutoff}
                   cutoffSummary={cutoffSummary}
                   timeZone={effectiveTimeZone}
                   deliveryDaysLabel={deliveryDaysLabel}
@@ -708,6 +747,7 @@ export function RuleForm({
                   onMinDaysInput={(event) => setMinDays(getInputValue(event))}
                   onMaxDaysInput={(event) => setMaxDays(getInputValue(event))}
                   onExcludedChange={setExcluded}
+                  onCutoffChange={setCutoff}
                 />
 
                 <StorefrontMessageSection

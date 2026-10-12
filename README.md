@@ -90,9 +90,13 @@ Deliverly requests only the scopes below (`shopify.app.toml`).
 
 Shopify CLI creates the development tunnel, updates the app URL and redirect URL, starts the embedded app, and deploys the development Theme App Extension preview.
 
+The storefront script is written in `storefront/deliverly-eta.js` and minified into `extensions/deliverly-eta/assets/deliverly-eta.js` by `pnpm build:storefront` (Shopify limits theme app extension JavaScript to 10 KB). Edit the source file, never the built one; `pnpm deploy` rebuilds it.
+
 In development the app runs inside Cloudflare's local Workers runtime. `vite.config.ts` passes it the values Shopify CLI sets, plus `DATABASE_URL` from `.env`.
 
 ## Deploying to Cloudflare Workers
+
+There are two Shopify apps: **Deliverly** (`shopify.app.toml`) is the staging app on the Cloudflare Worker, and **Delivery-dev** (`shopify.app.development.toml`) is for local development. `pnpm dev` always runs Delivery-dev; `pnpm deploy` always releases Deliverly.
 
 The app runs on Cloudflare Workers (`wrangler.jsonc`, entry point `worker/app.ts`) with PostgreSQL through Prisma's `pg` driver adapter.
 

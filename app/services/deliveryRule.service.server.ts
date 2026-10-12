@@ -139,6 +139,7 @@ export async function createDeliveryRule(
       minDeliveryDays: v.minDeliveryDays,
       maxDeliveryDays: v.maxDeliveryDays,
       excludedDays: serializeExcludedDays(v.excludedDays),
+      cutoffMinutes: v.cutoffMinutes,
       customMessage: serializeMessageParts({
         prefix: v.msgPrefix,
         separator: v.msgSeparator,
@@ -281,6 +282,7 @@ export async function updateDeliveryRule(
       minDeliveryDays: v.minDeliveryDays,
       maxDeliveryDays: v.maxDeliveryDays,
       excludedDays: serializeExcludedDays(v.excludedDays),
+      cutoffMinutes: v.cutoffMinutes,
       customMessage: serializeMessageParts({
         prefix: v.msgPrefix,
         separator: v.msgSeparator,

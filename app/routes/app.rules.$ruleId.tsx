@@ -11,7 +11,6 @@ import {
   updateDeliveryRule,
 } from "../services/deliveryRule.service.server";
 import { fetchShopTimeZone } from "../services/shopTimeZone.server";
-import { getShopCutoff } from "../services/shopSettings.server";
 import { RuleNotFoundError } from "../repositories/deliveryRule.repository.server";
 import {
   parseRuleFormData,
@@ -108,10 +107,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const targetIds = rule.targets.map((t) => t.targetId);
-  const [titles, timeZone, storeCutoff] = await Promise.all([
+  const [titles, timeZone] = await Promise.all([
     resolveTargetTitles(admin, targetIds),
     fetchShopTimeZone(admin),
-    getShopCutoff(shop),
   ]);
   const parts = parseStoredMessage(rule.customMessage) ?? {
     ...DEFAULT_MESSAGE_PARTS,
@@ -131,6 +129,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     excludedDays: [...parseExcludedDays(rule.excludedDays)].sort(
       (a, b) => a - b,
     ),
+    cutoffMinutes:
+      rule.cutoffMinutes === null ? "" : String(rule.cutoffMinutes),
     msgPrefix: parts.prefix,
     msgSeparator: parts.separator,
     msgSuffix: parts.suffix,
@@ -140,7 +140,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     enabled: rule.enabled,
   };
 
-  return { initial, ruleId: id, timeZone, storeCutoff };
+  return { initial, ruleId: id, timeZone };
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -200,14 +200,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function EditEtaRulePage() {
-  const { initial, ruleId, timeZone, storeCutoff } =
-    useLoaderData<typeof loader>();
+  const { initial, ruleId, timeZone } = useLoaderData<typeof loader>();
   return (
     <RuleForm
       key={ruleId}
       initial={initial}
       timeZone={timeZone}
-      storeCutoff={storeCutoff}
       labels={{
         title: "Edit rule",
         subtitle:

@@ -8,6 +8,7 @@ import {
   COUNTDOWN_TOKEN,
   DEFAULT_MESSAGE_PARTS,
   isStorefrontDateStyle,
+  MINUTES_PER_DAY,
   type StorefrontDateStyle,
 } from "../utils/delivery-dates";
 
@@ -20,6 +21,8 @@ export interface RuleFormInput {
   minDeliveryDays: number;
   maxDeliveryDays: number;
   excludedDays: number[];
+  /** Minutes after midnight in the shop's time zone; null = no cutoff. */
+  cutoffMinutes: number | null;
   msgPrefix: string;
   msgSeparator: string;
   msgSuffix: string;
@@ -131,6 +134,22 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
       "Untick at least one day so orders can be delivered.";
   }
 
+  // null = no cutoff. Midnight is rejected: it would never count today,
+  // which is just an extra processing day.
+  const cutoffMinutes =
+    input.cutoffMinutes === null || input.cutoffMinutes === undefined
+      ? null
+      : input.cutoffMinutes;
+  if (
+    cutoffMinutes !== null &&
+    !isIntInRange(cutoffMinutes, 1, MINUTES_PER_DAY - 1)
+  ) {
+    errors.cutoffMinutes =
+      cutoffMinutes === 0
+        ? "Pick a time after 12:00 AM."
+        : "Enter a valid cutoff time.";
+  }
+
   const msgPrefix =
     typeof input.msgPrefix === "string" ? input.msgPrefix.trim() : "";
   if (msgPrefix.length > MAX_PREFIX_LENGTH) {
@@ -165,8 +184,8 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
     errors.msgSuffix = `Put ${COUNTDOWN_TOKEN} in the before-cutoff text instead.`;
   }
 
-  // Validated whenever it's on: the store's cutoff can be set later, and
-  // the countdown then shows without the rule being edited again.
+  // Validated whenever it's on, even without a cutoff, so turning the
+  // cutoff on later never surfaces an old invalid value.
   const countdown = input.countdown === true;
   const countdownPrefix =
     typeof input.countdownPrefix === "string"
@@ -230,6 +249,7 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
       minDeliveryDays,
       maxDeliveryDays,
       excludedDays,
+      cutoffMinutes,
       msgPrefix,
       msgSeparator,
       msgSuffix,
@@ -266,6 +286,9 @@ export function parseRuleFormData(formData: FormData): Partial<RuleFormInput> {
     // NaN deliberately kept: the validator rejects it instead of
     // silently dropping tampered values.
     excludedDays: excludedRaw.map(toNum),
+    cutoffMinutes: get("cutoffMinutes").trim()
+      ? toNum(get("cutoffMinutes"))
+      : null,
     msgPrefix: get("msgPrefix"),
     msgSeparator: get("msgSeparator"),
     msgSuffix: get("msgSuffix"),

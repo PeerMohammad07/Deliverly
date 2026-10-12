@@ -390,7 +390,7 @@ export const COUNTDOWN_TOKEN = "{countdown}";
 
 /**
  * "3h 20m" / "45m". Rounds up so the last minute reads "1m", not "0m".
- * Mirrored in extensions/deliverly-eta/assets/deliverly-eta.js.
+ * Mirrored in storefront/deliverly-eta.js.
  */
 export function formatCountdown(seconds: number): string {
   const totalMinutes = Math.max(1, Math.ceil(seconds / 60));

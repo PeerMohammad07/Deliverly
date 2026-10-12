@@ -3,10 +3,11 @@
   "private": true,
   "scripts": {
     "build": "react-router build",
-    "dev": "shopify app dev",
+    "dev": "shopify app dev --config development",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
-    "deploy": "shopify app deploy",
+    "build:storefront": "esbuild storefront/deliverly-eta.js --minify --legal-comments=none --banner:js=\"/* Built from storefront/deliverly-eta.js by pnpm build:storefront. Don't edit. */\" --outfile=extensions/deliverly-eta/assets/deliverly-eta.js",
+    "deploy": "pnpm build:storefront && shopify app deploy --config shopify.app.toml",
     "config:use": "shopify app config use",
     "env": "shopify app env",
     "preview": "react-router build && vite preview",

@@ -13,7 +13,6 @@ import {
   isValidShopDomain,
   normalizeShop,
 } from "./deliveryRule.service.server";
-import { getShopCutoff } from "./shopSettings.server";
 
 const PRODUCT_CONTEXT_QUERY = `query ProductEstimateContext($id: ID!, $after: String) {
   shop {
@@ -197,12 +196,11 @@ export async function getDeliveryEstimate(input: {
   }
   let collectionIds: string[];
   let timeZone: string;
-  let cutoffMinutes: number | null;
   try {
-    [{ collectionIds, timeZone }, cutoffMinutes] = await Promise.all([
-      fetchProductContext(admin, productId),
-      getShopCutoff(normalizedShop),
-    ]);
+    ({ collectionIds, timeZone } = await fetchProductContext(
+      admin,
+      productId,
+    ));
   } catch (error) {
     if (error instanceof ProductNotFoundError) throw error;
     console.error("[storefrontEstimate] product context failed", {
@@ -222,7 +220,7 @@ export async function getDeliveryEstimate(input: {
   const excludedDays = parseExcludedDays(rule.excludedDays);
   const start = resolveOrderStart({
     now: getZonedNow(new Date(), timeZone),
-    cutoffMinutes,
+    cutoffMinutes: rule.cutoffMinutes,
     excludedDays,
   });
   const { minDate, maxDate } = calculateDeliveryRange({

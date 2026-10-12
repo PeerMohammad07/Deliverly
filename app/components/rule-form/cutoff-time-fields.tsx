@@ -11,8 +11,8 @@ function isIntBetween(value: string, min: number, max: number): boolean {
   return Number.isInteger(n) && n >= min && n <= max;
 }
 
-/** Instant per-field hints, shared with the page's save check. */
-export function cutoffFieldErrors(value: CutoffFieldsValue) {
+/** Instant per-field hints while the merchant types. */
+function cutoffFieldErrors(value: CutoffFieldsValue) {
   return {
     hour: isIntBetween(value.hour, 1, 12)
       ? undefined

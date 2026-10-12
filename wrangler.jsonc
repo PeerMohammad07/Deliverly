@@ -7,6 +7,10 @@
   // It also fills process.env from vars and secrets, which
   // app/shopify.server.ts reads.
   "compatibility_flags": ["nodejs_compat"],
+  // Public at https://deliverly.peeru548.workers.dev; no per-version
+  // preview URLs.
+  "workers_dev": true,
+  "preview_urls": false,
   "observability": {
     "enabled": true
   }

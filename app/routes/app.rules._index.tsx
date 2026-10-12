@@ -13,7 +13,7 @@ import {
 } from "../services/deliveryRule.service.server";
 import { handleRuleRowAction } from "../services/rule-row-action.server";
 import { useRuleRowActions } from "../hooks/use-rule-row-actions";
-import { parseExcludedDays } from "../utils/delivery-dates";
+import { formatCutoffTime, parseExcludedDays } from "../utils/delivery-dates";
 import { RulesEmptyState } from "../components/rules/rules-empty-state";
 import { RulePriorityBar } from "../components/rules/rule-priority-bar";
 import { WorkingDays } from "../components/rules/working-days";
@@ -78,6 +78,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         eta: display.displayEta,
         targets: display.displayTargets,
         processingDays: display.processingDays,
+        cutoffMinutes: display.cutoffMinutes,
         kind: display.displayTypeLabel,
         isDefault: display.type === "DEFAULT",
         excludedDays: [...parseExcludedDays(display.excludedDays)],
@@ -323,6 +324,9 @@ function RulesTable({
                     </s-text>
                     <s-text color="subdued">
                       {processingLabel(rule.processingDays)}
+                      {rule.cutoffMinutes !== null
+                        ? ` · Cutoff ${formatCutoffTime(rule.cutoffMinutes)}`
+                        : ""}
                     </s-text>
                   </s-stack>
                 </s-table-cell>

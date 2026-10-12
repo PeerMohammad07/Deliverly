@@ -94,7 +94,7 @@ export function StorefrontMessageSection({
         <s-stack direction="block" gap="base">
           <s-switch
             label="Show a countdown before the cutoff"
-            details="Before your store’s cutoff, the opening text below is used instead, in the same sentence as the dates. After the cutoff, the normal message shows."
+            details="Before this rule’s cutoff, the opening text below is used instead, in the same sentence as the dates. After the cutoff, the normal message shows."
             checked={countdown}
             onChange={(event) => onCountdownChange(event.currentTarget.checked)}
           />
@@ -122,8 +122,8 @@ export function StorefrontMessageSection({
               </s-stack>
               {hasCutoff ? null : (
                 <s-banner tone="warning">
-                  Your store has no order cutoff, so the countdown won’t show
-                  yet. <s-link href="/app/settings">Set a cutoff</s-link>
+                  This rule has no order cutoff, so the countdown won’t show.
+                  Turn on “Use an order cutoff time” under Order cutoff.
                 </s-banner>
               )}
             </s-stack>
