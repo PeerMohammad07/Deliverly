@@ -12,11 +12,19 @@ function startOfDay(date: Date): Date {
   return d;
 }
 
-export function getCalendarDateInTimeZone(
-  date: Date,
-  timeZone: string,
-): Date {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+export interface ZonedNow {
+  /** Today's calendar date in the time zone, as a local-midnight Date. */
+  date: Date;
+  /** Wall-clock seconds since midnight in the time zone. */
+  secondsOfDay: number;
+}
+
+/**
+ * Current calendar date plus wall-clock time in a time zone. The
+ * cutoff check needs the time of day, not just the date.
+ */
+export function getZonedNow(now: Date, timeZone: string): ZonedNow {
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
     throw new Error("A valid date is required");
   }
   if (typeof timeZone !== "string" || !timeZone.trim()) {
@@ -28,22 +36,28 @@ export function getCalendarDateInTimeZone(
     year: "numeric",
     month: "numeric",
     day: "numeric",
-  }).formatToParts(date);
-  const value = (type: "year" | "month" | "day") =>
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
     Number(parts.find((part) => part.type === type)?.value);
-  const year = value("year");
-  const month = value("month");
-  const day = value("day");
+  const [year, month, day, hour, minute, second] = (
+    ["year", "month", "day", "hour", "minute", "second"] as const
+  ).map(value);
 
   if (
-    !Number.isInteger(year) ||
-    !Number.isInteger(month) ||
-    !Number.isInteger(day)
+    ![year, month, day, hour, minute, second].every((n) => Number.isInteger(n))
   ) {
-    throw new Error("Couldn’t resolve the current date");
+    throw new Error("Couldn’t resolve the current time");
   }
 
-  return new Date(year, month - 1, day);
+  return {
+    date: new Date(year, month - 1, day),
+    // Some engines report midnight as hour 24 even with h23.
+    secondsOfDay: (hour % 24) * 3600 + minute * 60 + second,
+  };
 }
 
 function isExcluded(date: Date, excludedDays: Set<number>): boolean {
@@ -278,6 +292,114 @@ export function calculateDeliveryRange(input: CalculateRangeInput): DeliveryRang
   return { minDate, maxDate };
 }
 
+export const MINUTES_PER_DAY = 24 * 60;
+
+export interface OrderStart {
+  /** Date the order counts as placed on, before working-day roll-forward. */
+  from: Date;
+  /** Seconds until today's cutoff, or null when no countdown applies. */
+  secondsToCutoff: number | null;
+}
+
+/**
+ * Apply an order cutoff time. Before the cutoff on a working day the
+ * order counts as placed today; at or after it, it counts as placed
+ * tomorrow (calculateDeliveryRange then rolls past days off).
+ *
+ * The countdown only runs on a working day before its cutoff — never
+ * "Order within 2d 4h". It uses wall-clock time, so on a daylight-saving
+ * change between now and the cutoff it can be off by that hour.
+ */
+export function resolveOrderStart(input: {
+  now: ZonedNow;
+  cutoffMinutes: number | null | undefined;
+  excludedDays: Set<number>;
+}): OrderStart {
+  const { now, cutoffMinutes, excludedDays } = input;
+  const today = new Date(now.date);
+  if (
+    cutoffMinutes === null ||
+    cutoffMinutes === undefined ||
+    !Number.isInteger(cutoffMinutes) ||
+    cutoffMinutes < 0 ||
+    cutoffMinutes >= MINUTES_PER_DAY
+  ) {
+    return { from: today, secondsToCutoff: null };
+  }
+  // A day off already rolls forward to the next working day, and that
+  // day's cutoff is more than "today" away — no countdown.
+  if (isExcluded(today, excludedDays)) {
+    return { from: today, secondsToCutoff: null };
+  }
+
+  const secondsLeft = cutoffMinutes * 60 - now.secondsOfDay;
+  if (secondsLeft > 0) {
+    return { from: today, secondsToCutoff: secondsLeft };
+  }
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return { from: tomorrow, secondsToCutoff: null };
+}
+
+/** "2:00 PM" for 840 minutes after midnight. */
+export function formatCutoffTime(minutes: number): string {
+  const hours = Math.floor(minutes / 60) % 24;
+  const mins = minutes % 60;
+  const period = hours < 12 ? "AM" : "PM";
+  const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+  return `${displayHour}:${String(mins).padStart(2, "0")} ${period}`;
+}
+
+export type CutoffPeriod = "AM" | "PM";
+
+export interface CutoffParts {
+  /** 1–12 */
+  hour: number;
+  /** 0–59 */
+  minute: number;
+  period: CutoffPeriod;
+}
+
+/** 840 → { hour: 2, minute: 0, period: "PM" }. */
+export function splitCutoffMinutes(minutes: number): CutoffParts {
+  const hours = Math.floor(minutes / 60) % 24;
+  return {
+    hour: hours % 12 === 0 ? 12 : hours % 12,
+    minute: minutes % 60,
+    period: hours < 12 ? "AM" : "PM",
+  };
+}
+
+/**
+ * Hour (1–12), minute (0–59) and AM/PM as typed by the merchant →
+ * minutes after midnight. null when either number is out of range.
+ */
+export function joinCutoffTime(
+  hour: string,
+  minute: string,
+  period: CutoffPeriod,
+): number | null {
+  const h = hour.trim() === "" ? NaN : Number(hour);
+  const m = minute.trim() === "" ? NaN : Number(minute);
+  if (!Number.isInteger(h) || h < 1 || h > 12) return null;
+  if (!Number.isInteger(m) || m < 0 || m > 59) return null;
+  return ((h % 12) + (period === "PM" ? 12 : 0)) * 60 + m;
+}
+
+export const COUNTDOWN_TOKEN = "{countdown}";
+
+/**
+ * "3h 20m" / "45m". Rounds up so the last minute reads "1m", not "0m".
+ * Mirrored in extensions/deliverly-eta/assets/deliverly-eta.js.
+ */
+export function formatCountdown(seconds: number): string {
+  const totalMinutes = Math.max(1, Math.ceil(seconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
+
 function ordinalSuffix(day: number): string {
   if (day >= 11 && day <= 13) return "th";
   switch (day % 10) {
@@ -390,13 +512,27 @@ export interface DeliveryMessageParts {
   separator: string;
   suffix: string;
   dateStyle: StorefrontDateStyle;
+  /**
+   * Before the store's cutoff, use countdownPrefix instead of prefix.
+   * Off unless the merchant turns it on.
+   */
+  countdown: boolean;
+  /**
+   * Opening text while the countdown runs, in the same sentence as the
+   * dates: "Order within {countdown} to get it between Oct 14 and Oct 16."
+   */
+  countdownPrefix: string;
 }
+
+export const DEFAULT_COUNTDOWN_PREFIX = `Order within ${COUNTDOWN_TOKEN} to get it between`;
 
 export const DEFAULT_MESSAGE_PARTS: DeliveryMessageParts = {
   prefix: "Estimated delivery between",
   separator: " and ",
   suffix: ".",
   dateStyle: "long",
+  countdown: false,
+  countdownPrefix: DEFAULT_COUNTDOWN_PREFIX,
 };
 
 /**
@@ -457,12 +593,21 @@ export function parseStoredMessage(
         separator: string;
         suffix: string;
         dateStyle: StorefrontDateStyle;
+        countdown?: unknown;
+        countdownPrefix?: unknown;
       };
+      // Countdown fields were added later; older rows have neither.
       return {
         prefix: p.prefix,
         separator: p.separator,
         suffix: p.suffix,
         dateStyle: p.dateStyle,
+        countdown: p.countdown === true,
+        countdownPrefix:
+          typeof p.countdownPrefix === "string" &&
+          p.countdownPrefix.includes(COUNTDOWN_TOKEN)
+            ? p.countdownPrefix
+            : DEFAULT_COUNTDOWN_PREFIX,
       };
     }
     return null;
@@ -498,4 +643,27 @@ export function renderStoredMessage(
   const min = formatStorefrontDateWithStyle(minDate, parts.dateStyle);
   const max = formatStorefrontDateWithStyle(maxDate, parts.dateStyle);
   return composeDeliveryMessage(parts, min, max);
+}
+
+/**
+ * The before-cutoff sentence, with {countdown} left in for the
+ * storefront to fill and tick. null when the rule has no countdown
+ * (or uses a legacy plain-text message).
+ */
+export function renderCountdownMessage(
+  stored: string,
+  minDate: Date,
+  maxDate: Date,
+): string | null {
+  const parts = parseStoredMessage(stored);
+  if (!parts?.countdown || !parts.countdownPrefix.includes(COUNTDOWN_TOKEN)) {
+    return null;
+  }
+  const min = formatStorefrontDateWithStyle(minDate, parts.dateStyle);
+  const max = formatStorefrontDateWithStyle(maxDate, parts.dateStyle);
+  return composeDeliveryMessage(
+    { ...parts, prefix: parts.countdownPrefix },
+    min,
+    max,
+  );
 }

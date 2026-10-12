@@ -14,14 +14,20 @@ import {
   type RuleTypeInput,
 } from "../validators/deliveryRule.validator";
 import {
+  addBusinessDays,
   calculateDeliveryRange,
   composeDeliveryRange,
+  COUNTDOWN_TOKEN,
   DEFAULT_MESSAGE_PARTS,
   deriveWorkingDays,
+  formatCountdown,
+  formatCutoffTime,
   formatDeliveryDays,
   formatStorefrontDateWithStyle,
+  getZonedNow,
   isStorefrontDateStyle,
   parseExcludedDays,
+  resolveOrderStart,
   type StorefrontDateStyle,
 } from "../utils/delivery-dates";
 import { DeliveryTimingSections } from "./rule-form/delivery-timing-sections";
@@ -52,6 +58,8 @@ export interface RuleFormInitial {
   msgSeparator: string;
   msgSuffix: string;
   dateStyle: StorefrontDateStyle;
+  countdown: boolean;
+  countdownPrefix: string;
   enabled: boolean;
 }
 
@@ -67,6 +75,18 @@ function getInputValue(e: unknown): string {
   if (current && typeof current.value === "string") return current.value;
   return "";
 }
+
+/** The browser's zone, for when the shop's couldn't be loaded. */
+function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+/** Countdown shown in the preview when none would run right now. */
+const SAMPLE_COUNTDOWN_SECONDS = 3 * 3600 + 20 * 60;
 
 function toInt(value: string, fallback: number): number {
   const n = Number(value);
@@ -99,9 +119,15 @@ function initType(raw: string | undefined): RuleTypeInput {
 export function RuleForm({
   initial,
   labels,
+  timeZone,
+  storeCutoff,
 }: {
   initial: RuleFormInitial;
   labels: RuleFormLabels;
+  /** Shop's IANA time zone; null when it couldn't be loaded. */
+  timeZone: string | null;
+  /** Store-wide order cutoff (Settings), in minutes; null = none. */
+  storeCutoff: number | null;
 }) {
   const actionData = useActionData<RuleFormActionData | undefined>();
   const navigate = useNavigate();
@@ -167,6 +193,16 @@ export function RuleForm({
       ? serverValues.dateStyle
       : initial.dateStyle,
   );
+  const [countdown, setCountdown] = useState(
+    actionData ? serverValues?.countdown === "true" : initial.countdown,
+  );
+  const [countdownPrefix, setCountdownPrefix] = useState(
+    serverValues?.countdownPrefix ?? initial.countdownPrefix,
+  );
+  // Which moment the preview shows when the store has a cutoff.
+  const [previewMoment, setPreviewMoment] = useState<"before" | "after">(
+    "before",
+  );
   const [enabled, setEnabled] = useState(
     actionData ? serverValues?.enabled !== "false" : initial.enabled,
   );
@@ -190,6 +226,8 @@ export function RuleForm({
       msgSeparator: initial.msgSeparator,
       msgSuffix: initial.msgSuffix,
       dateStyle: initial.dateStyle,
+      countdown: initial.countdown,
+      countdownPrefix: initial.countdownPrefix,
       enabled: initial.enabled,
     }),
   );
@@ -209,6 +247,8 @@ export function RuleForm({
     msgSeparator,
     msgSuffix,
     dateStyle,
+    countdown,
+    countdownPrefix,
     enabled,
   });
   const isDirty = currentSnapshot !== initialSnapshot.current;
@@ -247,21 +287,108 @@ export function RuleForm({
     }
   }, [actionData, shopify]);
 
-  const previewDates = useMemo(() => {
+  const effectiveTimeZone = timeZone ?? browserTimeZone();
+  const hasCutoff = storeCutoff !== null;
+  // Same steps as the storefront: shop-time "now" → cutoff → date range.
+  // With a cutoff, it also works out an order placed before and after it
+  // on a working day (today, or the next one), for the preview toggle
+  // and the "ships on" example.
+  const preview = useMemo(() => {
     try {
-      const { minDate, maxDate } = calculateDeliveryRange({
-        from: new Date(),
-        processingDays: Math.max(0, toInt(processingDays, 1)),
+      const excludedSet = new Set(excluded);
+      const processing = Math.max(0, toInt(processingDays, 1));
+      const timing = {
+        processingDays: processing,
         minShippingDays: Math.max(0, toInt(minDays, 3)),
         maxShippingDays: Math.max(0, toInt(maxDays, 5)),
-        excludedDays: new Set(excluded),
+        excludedDays: excludedSet,
+      };
+      const now = getZonedNow(new Date(), effectiveTimeZone);
+      if (storeCutoff === null) {
+        return {
+          ok: true as const,
+          now: calculateDeliveryRange({ ...timing, from: now.date }),
+          cutoff: null,
+        };
+      }
+      const orderDay = addBusinessDays(now.date, 0, excludedSet);
+      const nextDay = new Date(orderDay);
+      nextDay.setDate(nextDay.getDate() + 1);
+      const live = resolveOrderStart({
+        now,
+        cutoffMinutes: storeCutoff,
+        excludedDays: excludedSet,
       });
-      return { ok: true as const, minDate, maxDate };
+      return {
+        ok: true as const,
+        now: null,
+        cutoff: {
+          orderDay,
+          before: calculateDeliveryRange({ ...timing, from: orderDay }),
+          after: calculateDeliveryRange({ ...timing, from: nextDay }),
+          shipsBefore: addBusinessDays(orderDay, processing, excludedSet),
+          shipsAfter: addBusinessDays(nextDay, processing, excludedSet),
+          secondsLeft: live.secondsToCutoff,
+        },
+      };
     } catch {
       return { ok: false as const };
     }
-  }, [processingDays, minDays, maxDays, excluded]);
+  }, [
+    processingDays,
+    minDays,
+    maxDays,
+    excluded,
+    storeCutoff,
+    effectiveTimeZone,
+  ]);
 
+  const previewRange = !preview.ok
+    ? null
+    : preview.cutoff
+      ? preview.cutoff[previewMoment]
+      : preview.now;
+  const previewDates = previewRange
+    ? { ok: true as const, ...previewRange }
+    : { ok: false as const };
+
+  // Before the cutoff, rules with the countdown use their before-cutoff
+  // opening text, with the real time left if the cutoff is still ahead
+  // today, otherwise a sample.
+  const showCountdownText =
+    hasCutoff &&
+    previewMoment === "before" &&
+    countdown &&
+    countdownPrefix.includes(COUNTDOWN_TOKEN);
+  const previewPrefix = showCountdownText
+    ? countdownPrefix
+        .split(COUNTDOWN_TOKEN)
+        .join(
+          formatCountdown(
+            (preview.ok && preview.cutoff?.secondsLeft) ||
+              SAMPLE_COUNTDOWN_SECONDS,
+          ),
+        )
+    : msgPrefix;
+
+  const cutoffSummary =
+    storeCutoff !== null && preview.ok && preview.cutoff
+      ? {
+          cutoffLabel: formatCutoffTime(storeCutoff),
+          orderDay: formatStorefrontDateWithStyle(
+            preview.cutoff.orderDay,
+            "weekday",
+          ),
+          shipsBefore: formatStorefrontDateWithStyle(
+            preview.cutoff.shipsBefore,
+            "weekday",
+          ),
+          shipsAfter: formatStorefrontDateWithStyle(
+            preview.cutoff.shipsAfter,
+            "weekday",
+          ),
+        }
+      : null;
 
   const etaMinStr = previewDates.ok
     ? formatStorefrontDateWithStyle(previewDates.minDate, dateStyle)
@@ -355,6 +482,8 @@ export function RuleForm({
     fd.append("msgSeparator", msgSeparator);
     fd.append("msgSuffix", msgSuffix);
     fd.append("dateStyle", dateStyle);
+    fd.append("countdown", countdown ? "true" : "false");
+    fd.append("countdownPrefix", countdownPrefix);
     fd.append("enabled", enabled ? "true" : "false");
     // Instant client check with the exact server rules — fixable mistakes
     // highlight immediately with no spinner flash. The server re-validates
@@ -397,6 +526,8 @@ export function RuleForm({
     msgSeparator,
     msgSuffix,
     dateStyle,
+    countdown,
+    countdownPrefix,
     enabled,
   ]);
 
@@ -440,6 +571,8 @@ export function RuleForm({
     setMsgSeparator(initial.msgSeparator);
     setMsgSuffix(initial.msgSuffix);
     setDateStyle(initial.dateStyle);
+    setCountdown(initial.countdown);
+    setCountdownPrefix(initial.countdownPrefix);
     setEnabled(initial.enabled);
   }
 
@@ -448,6 +581,18 @@ export function RuleForm({
     setMsgSeparator(DEFAULT_MESSAGE_PARTS.separator);
     setMsgSuffix(DEFAULT_MESSAGE_PARTS.suffix);
     setDateStyle(DEFAULT_MESSAGE_PARTS.dateStyle);
+    setCountdownPrefix(DEFAULT_MESSAGE_PARTS.countdownPrefix);
+  }
+
+  async function copyCountdownToken() {
+    try {
+      await navigator.clipboard.writeText(COUNTDOWN_TOKEN);
+      shopify.toast.show(`Copied ${COUNTDOWN_TOKEN}`);
+    } catch {
+      shopify.toast.show(`Couldn’t copy — type ${COUNTDOWN_TOKEN} instead.`, {
+        isError: true,
+      });
+    }
   }
 
   const minGreaterThanMax =
@@ -552,6 +697,8 @@ export function RuleForm({
                   minDays={minDays}
                   maxDays={maxDays}
                   excluded={excluded}
+                  cutoffSummary={cutoffSummary}
+                  timeZone={effectiveTimeZone}
                   deliveryDaysLabel={deliveryDaysLabel}
                   minGreaterThanMax={minGreaterThanMax}
                   errors={errors}
@@ -568,6 +715,9 @@ export function RuleForm({
                   msgSeparator={msgSeparator}
                   msgSuffix={msgSuffix}
                   dateStyle={dateStyle}
+                  hasCutoff={hasCutoff}
+                  countdown={countdown}
+                  countdownPrefix={countdownPrefix}
                   errors={errors}
                   onPrefixInput={(event) => setMsgPrefix(getInputValue(event))}
                   onSeparatorInput={(event) =>
@@ -582,13 +732,21 @@ export function RuleForm({
                         : DEFAULT_MESSAGE_PARTS.dateStyle,
                     );
                   }}
+                  onCountdownChange={setCountdown}
+                  onCountdownPrefixInput={(event) =>
+                    setCountdownPrefix(getInputValue(event))
+                  }
+                  onCopyCountdownToken={copyCountdownToken}
                   onReset={resetMessage}
                 />
               </s-stack>
 
               <StorefrontPreview
                 previewAvailable={previewDates.ok}
-                prefix={msgPrefix}
+                prefix={previewPrefix}
+                cutoffLabel={cutoffSummary?.cutoffLabel ?? null}
+                moment={previewMoment}
+                onMomentChange={setPreviewMoment}
                 etaCore={etaCore}
                 suffixSpace={etaSuffixSpace}
                 suffix={etaSuffix}

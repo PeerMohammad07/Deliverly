@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "deliverly",
+  "main": "./worker/app.ts",
+  "compatibility_date": "2026-10-01",
+  // nodejs_compat: Prisma's pg driver (TCP sockets) and AsyncLocalStorage.
+  // It also fills process.env from vars and secrets, which
+  // app/shopify.server.ts reads.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  }
+  // Secrets (set with `wrangler secret put <NAME>` or in the dashboard;
+  // locally they come from .env, see vite.config.ts):
+  //   SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SHOPIFY_APP_URL, SCOPES,
+  //   DATABASE_URL
+  //   optional: SHOPIFY_APP_HANDLE, SHOP_CUSTOM_DOMAIN
+  //
+  // Optional connection pooling with Hyperdrive (recommended):
+  //   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<hyperdrive id>" }]
+  // worker/app.ts prefers it over DATABASE_URL when it's bound.
+}

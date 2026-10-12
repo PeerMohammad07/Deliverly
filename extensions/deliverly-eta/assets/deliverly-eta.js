@@ -15,6 +15,17 @@
   // Product whose estimate is currently visible. Refreshes for it keep the
   // message on screen (no hide/show flash, no layout shift).
   var shownGid = null;
+  var COUNTDOWN_TOKEN = "{countdown}";
+  // Countdown deadline: Date.now() plus the server's secondsLeft, so only
+  // elapsed time matters, not whether the device clock is right.
+  // Date.now (not performance.now) keeps counting while the device sleeps.
+  // null = no countdown running.
+  var countdownEnd = null;
+  // Before-cutoff sentence with {countdown} still in it.
+  var countdownMessage = "";
+  // Normal sentence, shown the moment the countdown ends.
+  var plainMessage = "";
+  var countdownTimer = null;
   var ROOTS = [
     'main section[id*="Product"]',
     'main section[id*="product"]',
@@ -107,6 +118,53 @@
   function datesEl(host) {
     return host ? host.querySelector("[data-deliverly-eta-dates]") : null;
   }
+  // Same output as formatCountdown in app/utils/delivery-dates.ts.
+  function formatCountdown(seconds) {
+    var total = Math.max(1, Math.ceil(seconds / 60));
+    var h = Math.floor(total / 60);
+    var m = total % 60;
+    if (h === 0) return m + "m";
+    return m === 0 ? h + "h" : h + "h " + m + "m";
+  }
+  function stopCountdown() {
+    if (countdownTimer) window.clearInterval(countdownTimer);
+    countdownTimer = null;
+    countdownEnd = null;
+  }
+  function tickCountdown() {
+    var host = etaHost();
+    var d = datesEl(host);
+    if (countdownEnd === null || !d) return stopCountdown();
+    var left = (countdownEnd - Date.now()) / 1000;
+    if (left <= 0) {
+      // Cutoff passed: show the normal sentence, then fetch the new dates.
+      stopCountdown();
+      d.textContent = plainMessage;
+      if (cached.productGid && host) loadEta(host, cached.productGid);
+      return;
+    }
+    d.textContent = countdownMessage.split(COUNTDOWN_TOKEN).join(formatCountdown(left));
+  }
+  // Shows the estimate: the before-cutoff sentence with a live countdown
+  // when the server sent one, otherwise the normal sentence.
+  function showEstimate(host, data) {
+    stopCountdown();
+    plainMessage = data.message;
+    showMessage(host, plainMessage);
+    var cd = data.countdown;
+    if (
+      !cd ||
+      typeof cd.secondsLeft !== "number" ||
+      !(cd.secondsLeft > 0) ||
+      typeof cd.message !== "string" ||
+      cd.message.indexOf(COUNTDOWN_TOKEN) === -1
+    )
+      return;
+    countdownMessage = cd.message;
+    countdownEnd = Date.now() + cd.secondsLeft * 1000;
+    tickCountdown();
+    countdownTimer = window.setInterval(tickCountdown, 15000);
+  }
   function stamp(host, d) {
     if (!host || !host.setAttribute) return;
     if (d && d.productGid) {
@@ -129,6 +187,7 @@
   }
   function showLoading(host) {
     shownGid = null;
+    stopCountdown();
     if (isEditor()) return showMessage(host, PREVIEW);
     var el = inner(host);
     if (el) {
@@ -150,6 +209,7 @@
     }
     dropFlight();
     shownGid = null;
+    stopCountdown();
     var host = etaHost();
     if (host) host.remove();
   }
@@ -175,7 +235,7 @@
         if (!h || !h.isConnected) return;
         if (data && data.enabled === true && typeof data.message === "string" && data.message.trim()) {
           stamp(h, cached);
-          showMessage(h, data.message);
+          showEstimate(h, data);
           shownGid = gid;
         } else hideEta();
       })

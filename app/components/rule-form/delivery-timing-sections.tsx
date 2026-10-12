@@ -15,6 +15,14 @@ interface DeliveryTimingSectionsProps {
   minDays: string;
   maxDays: string;
   excluded: number[];
+  /** The store cutoff applied to this rule's timing; null = no cutoff. */
+  cutoffSummary: {
+    cutoffLabel: string;
+    orderDay: string;
+    shipsBefore: string;
+    shipsAfter: string;
+  } | null;
+  timeZone: string;
   deliveryDaysLabel: string;
   minGreaterThanMax: boolean;
   errors: RuleFormErrors;
@@ -29,6 +37,8 @@ export function DeliveryTimingSections({
   minDays,
   maxDays,
   excluded,
+  cutoffSummary,
+  timeZone,
   deliveryDaysLabel,
   minGreaterThanMax,
   errors,
@@ -90,6 +100,34 @@ export function DeliveryTimingSections({
               onInput={onMaxDaysInput}
             />
           </s-grid>
+          <s-box padding="base" background="subdued" borderRadius="base">
+            {cutoffSummary ? (
+              <s-stack direction="block" gap="small-200">
+                <s-text>
+                  <strong>Order cutoff: {cutoffSummary.cutoffLabel}</strong>{" "}
+                  (store setting, {timeZone})
+                </s-text>
+                <s-text color="subdued">
+                  Ordered {cutoffSummary.orderDay} before{" "}
+                  {cutoffSummary.cutoffLabel}: ships{" "}
+                  {cutoffSummary.shipsBefore === cutoffSummary.orderDay
+                    ? "the same day"
+                    : cutoffSummary.shipsBefore}
+                  . At or after {cutoffSummary.cutoffLabel}: ships{" "}
+                  {cutoffSummary.shipsAfter}.
+                </s-text>
+                <s-link href="/app/settings">Change cutoff in Settings</s-link>
+              </s-stack>
+            ) : (
+              <s-stack direction="block" gap="small-200">
+                <s-text color="subdued">
+                  No order cutoff: orders count from the day they’re placed,
+                  whatever the time.
+                </s-text>
+                <s-link href="/app/settings">Set a cutoff in Settings</s-link>
+              </s-stack>
+            )}
+          </s-box>
         </s-stack>
       </s-section>
 

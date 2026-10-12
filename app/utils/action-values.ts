@@ -16,6 +16,8 @@ const ACTION_VALUE_DEFAULTS: Record<string, string> = {
   msgSeparator: "",
   msgSuffix: "",
   dateStyle: "",
+  countdown: "false",
+  countdownPrefix: "",
   enabled: "true",
 };
 

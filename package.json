@@ -9,14 +9,16 @@
     "deploy": "shopify app deploy",
     "config:use": "shopify app config use",
     "env": "shopify app env",
-    "start": "react-router-serve ./build/server/index.js",
-    "docker-start": "pnpm run setup && pnpm run start",
+    "preview": "react-router build && vite preview",
+    "deploy:worker": "react-router build && wrangler deploy",
+    "cf-typegen": "wrangler types",
     "setup": "prisma generate && prisma migrate deploy",
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "prisma": "prisma",
     "vite": "vite",
-    "typecheck": "react-router typegen && tsc --noEmit"
+    "typecheck": "react-router typegen && tsc --noEmit",
+    "test": "vitest run"
   },
   "type": "module",
   "packageManager": "pnpm@11.24.0",
@@ -24,11 +26,11 @@
     "node": ">=22.12"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "6.19.3",
     "@prisma/client": "^6.19.0",
     "@react-router/dev": "7.18.2",
     "@react-router/fs-routes": "7.18.2",
     "@react-router/node": "7.18.2",
-    "@react-router/serve": "7.18.2",
     "@shopify/app-bridge-react": "^4.2.4",
     "@shopify/shopify-app-react-router": "^2.1.0",
     "@shopify/shopify-app-session-storage-prisma": "^10.0.1",
@@ -40,6 +42,7 @@
     "vite-tsconfig-paths": "^5.1.4"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.63.1",
     "@shopify/polaris-types": "^2.0.0-rc.3",
     "@types/eslint": "^9.6.1",
     "@types/node": "^22.18.8",
@@ -55,7 +58,9 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
-    "vite": "^6.3.6"
+    "vite": "^6.3.6",
+    "vitest": "^3.2.7",
+    "wrangler": "^4.149.0"
   },
   "workspaces": [
     "extensions/*"

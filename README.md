@@ -90,7 +90,39 @@ Deliverly requests only the scopes below (`shopify.app.toml`).
 
 Shopify CLI creates the development tunnel, updates the app URL and redirect URL, starts the embedded app, and deploys the development Theme App Extension preview.
 
-For hosted environments, configure `DATABASE_URL`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, and `SCOPES`. `SHOPIFY_APP_HANDLE` is optional for app-embed status detection, and `SHOP_CUSTOM_DOMAIN` is optional. Replace the `example.com` URLs in `shopify.app.toml` before a production deployment.
+In development the app runs inside Cloudflare's local Workers runtime. `vite.config.ts` passes it the values Shopify CLI sets, plus `DATABASE_URL` from `.env`.
+
+## Deploying to Cloudflare Workers
+
+The app runs on Cloudflare Workers (`wrangler.jsonc`, entry point `worker/app.ts`) with PostgreSQL through Prisma's `pg` driver adapter.
+
+1. Set the Worker secrets once (or in the Cloudflare dashboard):
+
+   ```bash
+   pnpm exec wrangler secret put SHOPIFY_API_KEY
+   pnpm exec wrangler secret put SHOPIFY_API_SECRET
+   pnpm exec wrangler secret put SHOPIFY_APP_URL   # the Worker's public URL
+   pnpm exec wrangler secret put SCOPES            # read_products,write_app_proxy,read_themes
+   pnpm exec wrangler secret put DATABASE_URL
+   ```
+
+   `SHOPIFY_APP_HANDLE` (app-embed status detection) and `SHOP_CUSTOM_DOMAIN` are optional.
+
+2. Run database migrations against the production database:
+
+   ```bash
+   DATABASE_URL="<production url>" pnpm exec prisma migrate deploy
+   ```
+
+3. Build and deploy the Worker:
+
+   ```bash
+   pnpm deploy:worker
+   ```
+
+4. Put the Worker URL in `shopify.app.toml` (`application_url` and `[auth] redirect_urls`), then run `pnpm deploy` to release the app configuration and theme extension.
+
+The database must be reachable from Cloudflare. For connection pooling, create a Hyperdrive configuration and add its binding as described in `wrangler.jsonc`; `worker/app.ts` uses it instead of `DATABASE_URL` when it's bound.
 
 ## Merchant Workflow
 

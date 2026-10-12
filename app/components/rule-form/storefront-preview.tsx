@@ -2,7 +2,12 @@ import { useState } from "react";
 
 interface StorefrontPreviewProps {
   previewAvailable: boolean;
+  /** Opening text for the chosen moment, countdown already filled in. */
   prefix: string;
+  /** Store cutoff, e.g. "2:00 PM"; null hides the before/after toggle. */
+  cutoffLabel: string | null;
+  moment: "before" | "after";
+  onMomentChange: (moment: "before" | "after") => void;
   etaCore: string;
   suffixSpace: string;
   suffix: string;
@@ -11,6 +16,9 @@ interface StorefrontPreviewProps {
 export function StorefrontPreview({
   previewAvailable,
   prefix,
+  cutoffLabel,
+  moment,
+  onMomentChange,
   etaCore,
   suffixSpace,
   suffix,
@@ -45,6 +53,24 @@ export function StorefrontPreview({
             >
               Preview
             </div>
+            {cutoffLabel ? (
+              <div style={{ marginTop: "10px" }}>
+                <s-select
+                  label="Order placed"
+                  value={moment}
+                  onChange={(event) =>
+                    onMomentChange(
+                      event.currentTarget.value === "after"
+                        ? "after"
+                        : "before",
+                    )
+                  }
+                >
+                  <s-option value="before">Before {cutoffLabel}</s-option>
+                  <s-option value="after">At or after {cutoffLabel}</s-option>
+                </s-select>
+              </div>
+            ) : null}
           </div>
 
           <div style={{ padding: "18px" }}>

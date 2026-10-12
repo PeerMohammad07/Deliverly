@@ -5,6 +5,7 @@
  */
 
 import {
+  COUNTDOWN_TOKEN,
   DEFAULT_MESSAGE_PARTS,
   isStorefrontDateStyle,
   type StorefrontDateStyle,
@@ -23,6 +24,9 @@ export interface RuleFormInput {
   msgSeparator: string;
   msgSuffix: string;
   dateStyle: StorefrontDateStyle;
+  /** Use the before-cutoff opening text while the countdown runs. */
+  countdown: boolean;
+  countdownPrefix: string;
   enabled: boolean;
   targetIds: string[];
 }
@@ -33,6 +37,7 @@ const MAX_NAME_LENGTH = 100;
 const MAX_PREFIX_LENGTH = 120;
 const MAX_SEPARATOR_LENGTH = 10;
 const MAX_SUFFIX_LENGTH = 200;
+const MAX_COUNTDOWN_PREFIX_LENGTH = 120;
 export const MAX_TARGETS = 50;
 
 const PRODUCT_GID_PATTERN = /^gid:\/\/shopify\/Product\/\S+$/;
@@ -151,6 +156,30 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
     errors.dateStyle = "Pick a date style.";
   }
 
+  // {countdown} only has a value before the cutoff, so it belongs in the
+  // before-cutoff text; elsewhere it would show up literally.
+  if (!errors.msgPrefix && msgPrefix.includes(COUNTDOWN_TOKEN)) {
+    errors.msgPrefix = `Put ${COUNTDOWN_TOKEN} in the before-cutoff text instead.`;
+  }
+  if (!errors.msgSuffix && msgSuffix.includes(COUNTDOWN_TOKEN)) {
+    errors.msgSuffix = `Put ${COUNTDOWN_TOKEN} in the before-cutoff text instead.`;
+  }
+
+  // Validated whenever it's on: the store's cutoff can be set later, and
+  // the countdown then shows without the rule being edited again.
+  const countdown = input.countdown === true;
+  const countdownPrefix =
+    typeof input.countdownPrefix === "string"
+      ? input.countdownPrefix.trim()
+      : "";
+  if (countdown) {
+    if (!countdownPrefix.includes(COUNTDOWN_TOKEN)) {
+      errors.countdownPrefix = `Include ${COUNTDOWN_TOKEN} where the time left should appear.`;
+    } else if (countdownPrefix.length > MAX_COUNTDOWN_PREFIX_LENGTH) {
+      errors.countdownPrefix = `Keep this text under ${MAX_COUNTDOWN_PREFIX_LENGTH} characters.`;
+    }
+  }
+
   // De-duplicated: repeats would otherwise violate the DB unique
   // constraint on (ruleId, targetType, targetId) with a raw 500.
   const targetIds = Array.isArray(input.targetIds)
@@ -205,6 +234,10 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
       msgSeparator,
       msgSuffix,
       dateStyle,
+      countdown,
+      countdownPrefix: countdownPrefix.includes(COUNTDOWN_TOKEN)
+        ? countdownPrefix
+        : DEFAULT_MESSAGE_PARTS.countdownPrefix,
       enabled,
       targetIds: type === "DEFAULT" ? [] : targetIds,
     },
@@ -237,6 +270,8 @@ export function parseRuleFormData(formData: FormData): Partial<RuleFormInput> {
     msgSeparator: get("msgSeparator"),
     msgSuffix: get("msgSuffix"),
     dateStyle: get("dateStyle") as RuleFormInput["dateStyle"],
+    countdown: get("countdown") === "true",
+    countdownPrefix: get("countdownPrefix"),
     enabled:
       get("enabled") === "on" ||
       get("enabled") === "true" ||

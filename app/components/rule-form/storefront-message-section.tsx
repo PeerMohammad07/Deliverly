@@ -1,4 +1,7 @@
-import { type StorefrontDateStyle } from "../../utils/delivery-dates";
+import {
+  COUNTDOWN_TOKEN,
+  type StorefrontDateStyle,
+} from "../../utils/delivery-dates";
 import type { RuleFormErrors } from "../../validators/deliveryRule.validator";
 
 interface StorefrontMessageSectionProps {
@@ -6,11 +9,17 @@ interface StorefrontMessageSectionProps {
   msgSeparator: string;
   msgSuffix: string;
   dateStyle: StorefrontDateStyle;
+  hasCutoff: boolean;
+  countdown: boolean;
+  countdownPrefix: string;
   errors: RuleFormErrors;
   onPrefixInput: (event: unknown) => void;
   onSeparatorInput: (event: unknown) => void;
   onSuffixInput: (event: unknown) => void;
   onDateStyleChange: (event: unknown) => void;
+  onCountdownChange: (enabled: boolean) => void;
+  onCountdownPrefixInput: (event: unknown) => void;
+  onCopyCountdownToken: () => void;
   onReset: () => void;
 }
 
@@ -19,11 +28,17 @@ export function StorefrontMessageSection({
   msgSeparator,
   msgSuffix,
   dateStyle,
+  hasCutoff,
+  countdown,
+  countdownPrefix,
   errors,
   onPrefixInput,
   onSeparatorInput,
   onSuffixInput,
   onDateStyleChange,
+  onCountdownChange,
+  onCountdownPrefixInput,
+  onCopyCountdownToken,
   onReset,
 }: StorefrontMessageSectionProps) {
   return (
@@ -75,6 +90,45 @@ export function StorefrontMessageSection({
           <s-option value="short">Sep 17</s-option>
           <s-option value="weekday">Fri, Sep 17</s-option>
         </s-select>
+        <s-divider />
+        <s-stack direction="block" gap="base">
+          <s-switch
+            label="Show a countdown before the cutoff"
+            details="Before your store’s cutoff, the opening text below is used instead, in the same sentence as the dates. After the cutoff, the normal message shows."
+            checked={countdown}
+            onChange={(event) => onCountdownChange(event.currentTarget.checked)}
+          />
+          {countdown ? (
+            <s-stack direction="block" gap="small-200">
+              <s-text-field
+                label="Opening text before the cutoff"
+                name="countdownPrefix"
+                details={`${COUNTDOWN_TOKEN} is replaced with the time left, like 3h 20m. The dates follow, as in the normal message.`}
+                maxLength={120}
+                autocomplete="off"
+                value={countdownPrefix}
+                error={errors.countdownPrefix}
+                onInput={onCountdownPrefixInput}
+              />
+              <s-stack direction="inline" gap="small-200">
+                <s-button
+                  type="button"
+                  variant="tertiary"
+                  icon="clipboard"
+                  onClick={onCopyCountdownToken}
+                >
+                  Copy {COUNTDOWN_TOKEN}
+                </s-button>
+              </s-stack>
+              {hasCutoff ? null : (
+                <s-banner tone="warning">
+                  Your store has no order cutoff, so the countdown won’t show
+                  yet. <s-link href="/app/settings">Set a cutoff</s-link>
+                </s-banner>
+              )}
+            </s-stack>
+          ) : null}
+        </s-stack>
         <s-stack direction="inline" gap="small-200">
           <s-button
             type="button"

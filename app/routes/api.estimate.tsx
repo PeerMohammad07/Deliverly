@@ -57,7 +57,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const productId = (url.searchParams.get("productId") ?? "").trim();
 
   try {
-    return Response.json(await getDeliveryEstimate({ shop, productId, admin }));
+    // Estimates change at the cutoff and at midnight — never cache them.
+    return Response.json(
+      await getDeliveryEstimate({ shop, productId, admin }),
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
   } catch (error) {
     if (error instanceof InvalidProductError) {
       return Response.json(

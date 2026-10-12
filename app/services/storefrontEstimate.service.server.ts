@@ -1,8 +1,11 @@
 import { resolveDeliveryRule } from "./deliveryRuleResolution.service.server";
 import {
   calculateDeliveryRange,
-  getCalendarDateInTimeZone,
+  getZonedNow,
+  parseExcludedDays,
+  renderCountdownMessage,
   renderStoredMessage,
+  resolveOrderStart,
   toDateOnlyString,
 } from "../utils/delivery-dates";
 import { isProductGid } from "../validators/deliveryRule.validator";
@@ -10,6 +13,7 @@ import {
   isValidShopDomain,
   normalizeShop,
 } from "./deliveryRule.service.server";
+import { getShopCutoff } from "./shopSettings.server";
 
 const PRODUCT_CONTEXT_QUERY = `query ProductEstimateContext($id: ID!, $after: String) {
   shop {
@@ -46,8 +50,26 @@ export interface StorefrontAdminClient {
   ): Promise<{ json(): Promise<unknown> }>;
 }
 
+/**
+ * Present only before today's cutoff on rules with the countdown turned
+ * on. `message` replaces the normal one and still contains {countdown}
+ * for the storefront to fill. secondsLeft is relative, so a wrong clock
+ * on the shopper's device can't skew it; the storefront refetches when
+ * it reaches zero.
+ */
+export interface EstimateCountdown {
+  secondsLeft: number;
+  message: string;
+}
+
 export type EstimateResult =
-  | { enabled: true; message: string; minDate: string; maxDate: string }
+  | {
+      enabled: true;
+      message: string;
+      minDate: string;
+      maxDate: string;
+      countdown: EstimateCountdown | null;
+    }
   | { enabled: false; message: null; minDate: null; maxDate: null };
 
 const DISABLED_ESTIMATE: EstimateResult = {
@@ -175,11 +197,12 @@ export async function getDeliveryEstimate(input: {
   }
   let collectionIds: string[];
   let timeZone: string;
+  let cutoffMinutes: number | null;
   try {
-    ({ collectionIds, timeZone } = await fetchProductContext(
-      admin,
-      productId,
-    ));
+    [{ collectionIds, timeZone }, cutoffMinutes] = await Promise.all([
+      fetchProductContext(admin, productId),
+      getShopCutoff(normalizedShop),
+    ]);
   } catch (error) {
     if (error instanceof ProductNotFoundError) throw error;
     console.error("[storefrontEstimate] product context failed", {
@@ -196,18 +219,34 @@ export async function getDeliveryEstimate(input: {
   });
   if (!rule) return DISABLED_ESTIMATE;
 
+  const excludedDays = parseExcludedDays(rule.excludedDays);
+  const start = resolveOrderStart({
+    now: getZonedNow(new Date(), timeZone),
+    cutoffMinutes,
+    excludedDays,
+  });
   const { minDate, maxDate } = calculateDeliveryRange({
-    from: getCalendarDateInTimeZone(new Date(), timeZone),
+    from: start.from,
     processingDays: rule.processingDays,
     minShippingDays: rule.minDeliveryDays,
     maxShippingDays: rule.maxDeliveryDays,
-    excludedDays: rule.excludedDays,
+    excludedDays,
   });
+
+  const countdownMessage =
+    start.secondsToCutoff !== null
+      ? renderCountdownMessage(rule.customMessage, minDate, maxDate)
+      : null;
+  const countdown =
+    countdownMessage !== null && start.secondsToCutoff !== null
+      ? { secondsLeft: start.secondsToCutoff, message: countdownMessage }
+      : null;
 
   return {
     enabled: true,
     message: renderStoredMessage(rule.customMessage, minDate, maxDate),
     minDate: toDateOnlyString(minDate),
     maxDate: toDateOnlyString(maxDate),
+    countdown,
   };
 }
