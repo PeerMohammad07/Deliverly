@@ -32,16 +32,22 @@ export function RecentRules({ rules, loading }: RecentRulesProps) {
           </s-table-header-row>
           <s-table-body>
             {rules.map((rule) => (
-              <s-table-row key={rule.id}>
+              <s-table-row
+                key={rule.id}
+                clickDelegate={`recent-rule-${rule.id}`}
+              >
                 <s-table-cell>
                   <s-stack
                     direction="inline"
                     gap="small-200"
                     alignItems="center"
                   >
-                    <s-text>
+                    <s-link
+                      id={`recent-rule-${rule.id}`}
+                      href={`/app/rules/${rule.id}`}
+                    >
                       <span className={styles.strong}>{rule.name}</span>
-                    </s-text>
+                    </s-link>
                     <s-badge>{rule.kind}</s-badge>
                   </s-stack>
                 </s-table-cell>
