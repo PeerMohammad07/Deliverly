@@ -1,39 +1,21 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "1c9b98c5222e41b1fece2db3fec6aea8"
+client_id = "c46401d59f8d86e719381f5d5545946e"
+name = "Deliverly"
 application_url = "https://deliverly.peeru548.workers.dev"
 embedded = true
-name = "Deliverly"
+
+[webhooks]
+api_version = "2026-10"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_products,write_app_proxy,read_themes"
-
-[app_proxy]
-url = "/api/estimate"
-prefix = "apps"
-subpath = "delivery-estimate"
-
-[webhooks]
-api_version = "2026-07"
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = [ "app/uninstalled" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/compliance"
-  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+optional_scopes = [ ]
+use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [ "https://deliverly.peeru548.workers.dev/auth/callback" ]
 
 [build]
-include_config_on_deploy = true
-# Staging app on the Cloudflare Worker: `shopify app dev` must never swap
-# these URLs for a tunnel. Local development uses shopify.app.development.toml.
 automatically_update_urls_on_dev = false

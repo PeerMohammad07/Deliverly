@@ -35,9 +35,9 @@ export interface CreateRuleData {
 }
 
 /**
- * Thrown when a second DEFAULT rule is created for a shop.
- * SQLite (via Prisma) cannot express a partial unique index, so this
- * invariant is enforced here instead of in the schema.
+ * Thrown when a second DEFAULT rule is created for a shop. The unique
+ * defaultShopKey index (set only on DEFAULT rules) enforces this in the
+ * database, so two simultaneous requests can't both succeed.
  */
 export class DuplicateDefaultRuleError extends Error {
   constructor(shop: string) {
@@ -53,13 +53,44 @@ export class RuleNotFoundError extends Error {
   }
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
+function hasPrismaCode(error: unknown, code: string): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
     "code" in error &&
-    error.code === "P2002"
+    error.code === code
   );
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return hasPrismaCode(error, "P2002");
+}
+
+/** Prisma's "record to update/delete not found". */
+function isRecordNotFoundError(error: unknown): boolean {
+  return hasPrismaCode(error, "P2025");
+}
+
+/*
+ * Cloudflare D1 doesn't support transactions: Prisma runs the queries of
+ * a transaction one by one anyway. So writes here don't rely on them.
+ * Ownership is part of each write's WHERE (id + shop), and the single
+ * DEFAULT rule per shop is a unique index. Replacing a rule's targets is
+ * a delete followed by an insert; the input is validated and de-duplicated
+ * beforehand, so the insert failing in between is not expected.
+ */
+
+function targetRows(
+  ruleId: string,
+  type: CreateRuleData["type"],
+  targetIds: string[],
+) {
+  return targetIds.map((targetId) => ({
+    ruleId,
+    targetType:
+      type === "PRODUCT" ? ("PRODUCT" as const) : ("COLLECTION" as const),
+    targetId,
+  }));
 }
 
 /**
@@ -126,7 +157,8 @@ export async function listRulePageByShop(
     ...(query ? { name: { contains: query } } : {}),
   };
 
-  const [rules, filteredTotal, total, active] = await prisma.$transaction([
+  // Reads only, so they don't need a transaction (D1 has none anyway).
+  const [rules, filteredTotal, total, active] = await Promise.all([
     prisma.deliveryRule.findMany({
       where: filteredWhere,
       include: { targets: true },
@@ -214,56 +246,47 @@ export async function createRule(
   const shop = data.shop.trim().toLowerCase();
   if (!shop) throw new Error("Shop is required");
 
+  let ruleId: string;
   try {
-    return await prisma.$transaction(async (tx) => {
-      if (data.type === "DEFAULT") {
-        const existing = await tx.deliveryRule.findFirst({
-          where: { shop, type: "DEFAULT" },
-          select: { id: true },
-        });
-        if (existing) throw new DuplicateDefaultRuleError(shop);
-      }
-
-      return tx.deliveryRule.create({
-        data: {
-          shop,
-          defaultShopKey: data.type === "DEFAULT" ? shop : null,
-          name: data.name,
-          type: data.type,
-          processingDays: data.processingDays,
-          minDeliveryDays: data.minDeliveryDays,
-          maxDeliveryDays: data.maxDeliveryDays,
-          excludedDays: data.excludedDays,
-          cutoffMinutes: data.cutoffMinutes,
-          customMessage: data.customMessage,
-          enabled: data.enabled,
-          targets:
-            data.targetIds.length > 0
-              ? {
-                  create: data.targetIds.map((targetId) => ({
-                    targetType:
-                      data.type === "PRODUCT" ? "PRODUCT" : "COLLECTION",
-                    targetId,
-                  })),
-                }
-              : undefined,
-        },
-        include: { targets: true },
-      });
-    });
+    ({ id: ruleId } = await prisma.deliveryRule.create({
+      data: {
+        shop,
+        defaultShopKey: data.type === "DEFAULT" ? shop : null,
+        name: data.name,
+        type: data.type,
+        processingDays: data.processingDays,
+        minDeliveryDays: data.minDeliveryDays,
+        maxDeliveryDays: data.maxDeliveryDays,
+        excludedDays: data.excludedDays,
+        cutoffMinutes: data.cutoffMinutes,
+        customMessage: data.customMessage,
+        enabled: data.enabled,
+      },
+      select: { id: true },
+    }));
   } catch (error) {
     if (data.type === "DEFAULT" && isUniqueConstraintError(error)) {
       throw new DuplicateDefaultRuleError(shop);
     }
     throw error;
   }
+
+  if (data.type !== "DEFAULT" && data.targetIds.length > 0) {
+    await prisma.ruleTarget.createMany({
+      data: targetRows(ruleId, data.type, data.targetIds),
+    });
+  }
+
+  const rule = await getRuleByIdForShop(shop, ruleId);
+  if (!rule) throw new RuleNotFoundError(ruleId);
+  return rule;
 }
 
 /**
- * Update a rule and replace its targets atomically.
- * Ownership is verified inside the transaction; switching to DEFAULT
- * is rejected when another DEFAULT already exists for the shop.
- * DEFAULT rules always end with zero targets.
+ * Update a rule and replace its targets. The update is scoped to the
+ * shop in the database; switching to DEFAULT fails on the unique index
+ * when the shop already has one. DEFAULT rules always end with zero
+ * targets.
  */
 export async function updateRule(
   shop: string,
@@ -275,56 +298,41 @@ export async function updateRule(
   if (!id || typeof id !== "string") throw new Error("Rule ID is required");
 
   try {
-    return await prisma.$transaction(async (tx) => {
-      const existing = await tx.deliveryRule.findFirst({
-        where: { id, shop: normalizedShop },
-        select: { id: true, type: true },
-      });
-      if (!existing) throw new RuleNotFoundError(id);
-
-      if (data.type === "DEFAULT" && existing.type !== "DEFAULT") {
-        const clash = await tx.deliveryRule.findFirst({
-          where: {
-            shop: normalizedShop,
-            type: "DEFAULT",
-            id: { not: id },
-          },
-          select: { id: true },
-        });
-        if (clash) throw new DuplicateDefaultRuleError(normalizedShop);
-      }
-
-      return tx.deliveryRule.update({
-        where: { id },
-        data: {
-          defaultShopKey:
-            data.type === "DEFAULT" ? normalizedShop : null,
-          name: data.name,
-          type: data.type,
-          processingDays: data.processingDays,
-          minDeliveryDays: data.minDeliveryDays,
-          maxDeliveryDays: data.maxDeliveryDays,
-          excludedDays: data.excludedDays,
-          cutoffMinutes: data.cutoffMinutes,
-          customMessage: data.customMessage,
-          enabled: data.enabled,
-          targets: {
-            deleteMany: {},
-            create: data.targetIds.map((targetId) => ({
-              targetType: data.type === "PRODUCT" ? "PRODUCT" : "COLLECTION",
-              targetId,
-            })),
-          },
-        },
-        include: { targets: true },
-      });
+    await prisma.deliveryRule.update({
+      where: { id, shop: normalizedShop },
+      data: {
+        defaultShopKey: data.type === "DEFAULT" ? normalizedShop : null,
+        name: data.name,
+        type: data.type,
+        processingDays: data.processingDays,
+        minDeliveryDays: data.minDeliveryDays,
+        maxDeliveryDays: data.maxDeliveryDays,
+        excludedDays: data.excludedDays,
+        cutoffMinutes: data.cutoffMinutes,
+        customMessage: data.customMessage,
+        enabled: data.enabled,
+      },
+      select: { id: true },
     });
   } catch (error) {
+    if (isRecordNotFoundError(error)) throw new RuleNotFoundError(id);
     if (data.type === "DEFAULT" && isUniqueConstraintError(error)) {
       throw new DuplicateDefaultRuleError(normalizedShop);
     }
     throw error;
   }
+
+  // The rule belongs to this shop (the update above matched it).
+  await prisma.ruleTarget.deleteMany({ where: { ruleId: id } });
+  if (data.type !== "DEFAULT" && data.targetIds.length > 0) {
+    await prisma.ruleTarget.createMany({
+      data: targetRows(id, data.type, data.targetIds),
+    });
+  }
+
+  const rule = await getRuleByIdForShop(normalizedShop, id);
+  if (!rule) throw new RuleNotFoundError(id);
+  return rule;
 }
 
 /**
@@ -338,16 +346,15 @@ export async function deleteRuleForShop(
   if (!normalizedShop) throw new Error("Shop is required");
   if (!id || typeof id !== "string") throw new Error("Rule ID is required");
 
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.deliveryRule.findFirst({
+  try {
+    return await prisma.deliveryRule.delete({
       where: { id, shop: normalizedShop },
       select: { id: true, name: true },
     });
-    if (!existing) throw new RuleNotFoundError(id);
-
-    await tx.deliveryRule.delete({ where: { id } });
-    return { id: existing.id, name: existing.name };
-  });
+  } catch (error) {
+    if (isRecordNotFoundError(error)) throw new RuleNotFoundError(id);
+    throw error;
+  }
 }
 
 /**
@@ -365,8 +372,7 @@ export async function deleteAllRulesForShop(shop: string): Promise<number> {
 }
 
 /**
- * Flip only the enabled flag, scoped to the shop.
- * Ownership check and write happen in one transaction.
+ * Flip only the enabled flag, scoped to the shop in the write itself.
  */
 export async function toggleRuleEnabled(
   shop: string,
@@ -375,17 +381,20 @@ export async function toggleRuleEnabled(
   const normalizedShop = shop.trim().toLowerCase();
   if (!normalizedShop) throw new Error("Shop is required");
   if (!id || typeof id !== "string") throw new Error("Rule ID is required");
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.deliveryRule.findFirst({
-      where: { id, shop: normalizedShop },
-      select: { id: true, enabled: true },
-    });
-    if (!existing) throw new RuleNotFoundError(id);
+  const existing = await prisma.deliveryRule.findFirst({
+    where: { id, shop: normalizedShop },
+    select: { enabled: true },
+  });
+  if (!existing) throw new RuleNotFoundError(id);
 
-    return tx.deliveryRule.update({
-      where: { id },
+  try {
+    return await prisma.deliveryRule.update({
+      where: { id, shop: normalizedShop },
       data: { enabled: !existing.enabled },
       include: { targets: true },
     });
-  });
+  } catch (error) {
+    if (isRecordNotFoundError(error)) throw new RuleNotFoundError(id);
+    throw error;
+  }
 }

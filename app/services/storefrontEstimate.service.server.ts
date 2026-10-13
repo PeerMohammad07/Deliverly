@@ -13,6 +13,10 @@ import {
   isValidShopDomain,
   normalizeShop,
 } from "./deliveryRule.service.server";
+import {
+  withProductContextCache,
+  type ProductContextStore,
+} from "./productContextCache.server";
 
 const PRODUCT_CONTEXT_QUERY = `query ProductEstimateContext($id: ID!, $after: String) {
   shop {
@@ -20,7 +24,7 @@ const PRODUCT_CONTEXT_QUERY = `query ProductEstimateContext($id: ID!, $after: St
   }
   product(id: $id) {
     id
-    collections(first: 250, after: $after) {
+    collections(first: 100, after: $after) {
       edges {
         node {
           id
@@ -34,9 +38,11 @@ const PRODUCT_CONTEXT_QUERY = `query ProductEstimateContext($id: ID!, $after: St
   }
 }`;
 
-// 250 is the Admin API page maximum. The cap bounds storefront latency;
-// products in more collections than this are vanishingly rare.
-const MAX_COLLECTION_PAGES = 10;
+// Shopify charges a query's requested size up front, so pages of 100
+// (not the 250 maximum) leave rate limit for the merchant's own admin.
+// 25 pages keep the same 2,500-collection cap; products in more
+// collections than this are vanishingly rare.
+const MAX_COLLECTION_PAGES = 25;
 
 /**
  * Minimal Admin API client surface the estimate flow needs.
@@ -179,8 +185,12 @@ export async function getDeliveryEstimate(input: {
   shop: string;
   productId: string;
   admin?: StorefrontAdminClient | null;
+  /** KV cache for the Shopify lookups; null skips caching. */
+  cache?: ProductContextStore | null;
+  /** Lets cache writes finish after the response (ctx.waitUntil). */
+  waitUntil?: (promise: Promise<unknown>) => void;
 }): Promise<EstimateResult> {
-  const { shop, productId, admin } = input;
+  const { shop, productId, admin, cache, waitUntil } = input;
   if (!shop || typeof shop !== "string") throw new Error("Shop is required");
   const normalizedShop = normalizeShop(shop);
   if (!isValidShopDomain(normalizedShop)) {
@@ -197,10 +207,13 @@ export async function getDeliveryEstimate(input: {
   let collectionIds: string[];
   let timeZone: string;
   try {
-    ({ collectionIds, timeZone } = await fetchProductContext(
-      admin,
+    ({ collectionIds, timeZone } = await withProductContextCache({
+      store: cache,
+      shop: normalizedShop,
       productId,
-    ));
+      load: () => fetchProductContext(admin, productId),
+      waitUntil,
+    }));
   } catch (error) {
     if (error instanceof ProductNotFoundError) throw error;
     console.error("[storefrontEstimate] product context failed", {

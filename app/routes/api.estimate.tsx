@@ -22,7 +22,7 @@ import {
  *
  * No default export: data-only route, same convention as webhooks.
  */
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+export const loader = async ({ request, context }: LoaderFunctionArgs) => {
   let admin;
   try {
     ({ admin } = await authenticate.public.appProxy(request));
@@ -59,7 +59,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     // Estimates change at the cutoff and at midnight — never cache them.
     return Response.json(
-      await getDeliveryEstimate({ shop, productId, admin }),
+      await getDeliveryEstimate({
+        shop,
+        productId,
+        admin,
+        cache: context.cloudflare.env.CACHE,
+        waitUntil: (promise) => context.cloudflare.ctx.waitUntil(promise),
+      }),
       {
         headers: { "Cache-Control": "no-store" },
       },

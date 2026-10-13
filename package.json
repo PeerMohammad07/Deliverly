@@ -4,6 +4,7 @@
   "scripts": {
     "build": "react-router build",
     "dev": "shopify app dev --config development",
+    "dev:reset": "shopify app dev --reset",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
     "build:storefront": "esbuild storefront/deliverly-eta.js --minify --legal-comments=none --banner:js=\"/* Built from storefront/deliverly-eta.js by pnpm build:storefront. Don't edit. */\" --outfile=extensions/deliverly-eta/assets/deliverly-eta.js",
@@ -13,7 +14,9 @@
     "preview": "react-router build && vite preview",
     "deploy:worker": "react-router build && wrangler deploy",
     "cf-typegen": "wrangler types",
-    "setup": "prisma generate && prisma migrate deploy",
+    "db:migrate:local": "wrangler d1 migrations apply deliverly --local",
+    "db:migrate:remote": "wrangler d1 migrations apply deliverly --remote",
+    "setup": "prisma generate",
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "prisma": "prisma",
@@ -27,7 +30,7 @@
     "node": ">=22.12"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "6.19.3",
+    "@prisma/adapter-d1": "6.19.3",
     "@prisma/client": "^6.19.0",
     "@react-router/dev": "7.18.2",
     "@react-router/fs-routes": "7.18.2",

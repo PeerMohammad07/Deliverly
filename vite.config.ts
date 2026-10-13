@@ -49,8 +49,9 @@ const prismaWorkerClient = path.join(
 
 // The Worker runs in workerd (also in dev), which can't see this
 // process's environment. In dev, pass it the values `shopify app dev`
-// sets plus DATABASE_URL from .env. Never in builds: vars end up in the
-// deployed config, and production uses Cloudflare secrets instead.
+// sets (or .env provides). Never in builds: vars end up in the deployed
+// config, and production uses Cloudflare secrets instead. The database
+// needs nothing here: the DB binding uses a local D1 copy in dev.
 const DEV_WORKER_VARS = [
   "SHOPIFY_API_KEY",
   "SHOPIFY_API_SECRET",
@@ -58,7 +59,6 @@ const DEV_WORKER_VARS = [
   "SCOPES",
   "SHOP_CUSTOM_DOMAIN",
   "SHOPIFY_APP_HANDLE",
-  "DATABASE_URL",
 ];
 
 function devWorkerVars(mode: string): Record<string, string> {

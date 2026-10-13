@@ -68,21 +68,20 @@ Deliverly requests only the scopes below (`shopify.app.toml`).
    pnpm install
    ```
 
-3. Create a local `.env` file and set `DATABASE_URL` to a valid PostgreSQL connection string.
-
-4. Generate Prisma Client and apply the migrations:
+3. Generate Prisma Client and create the local database (a local copy of Cloudflare D1, stored in `.wrangler/`):
 
    ```powershell
    pnpm setup
+   pnpm db:migrate:local
    ```
 
-5. Link the intended Shopify app configuration when required:
+4. Link the intended Shopify app configuration when required:
 
    ```powershell
    pnpm config:link
    ```
 
-6. Start the Shopify development environment:
+5. Start the Shopify development environment:
 
    ```powershell
    pnpm dev
@@ -92,13 +91,13 @@ Shopify CLI creates the development tunnel, updates the app URL and redirect URL
 
 The storefront script is written in `storefront/deliverly-eta.js` and minified into `extensions/deliverly-eta/assets/deliverly-eta.js` by `pnpm build:storefront` (Shopify limits theme app extension JavaScript to 10 KB). Edit the source file, never the built one; `pnpm deploy` rebuilds it.
 
-In development the app runs inside Cloudflare's local Workers runtime. `vite.config.ts` passes it the values Shopify CLI sets, plus `DATABASE_URL` from `.env`.
+In development the app runs inside Cloudflare's local Workers runtime with a local D1 database. `vite.config.ts` passes it the values Shopify CLI sets; `pnpm dev` applies pending D1 migrations to the local copy first.
 
 ## Deploying to Cloudflare Workers
 
 There are two Shopify apps: **Deliverly** (`shopify.app.toml`) is the staging app on the Cloudflare Worker, and **Delivery-dev** (`shopify.app.development.toml`) is for local development. `pnpm dev` always runs Delivery-dev; `pnpm deploy` always releases Deliverly.
 
-The app runs on Cloudflare Workers (`wrangler.jsonc`, entry point `worker/app.ts`) with PostgreSQL through Prisma's `pg` driver adapter.
+The app runs on Cloudflare Workers (`wrangler.jsonc`, entry point `worker/app.ts`). Its database is Cloudflare D1 (SQLite), reached through the `DB` binding with Prisma's D1 adapter; there's no connection string or database password.
 
 1. Set the Worker secrets once (or in the Cloudflare dashboard):
 
@@ -107,16 +106,17 @@ The app runs on Cloudflare Workers (`wrangler.jsonc`, entry point `worker/app.ts
    pnpm exec wrangler secret put SHOPIFY_API_SECRET
    pnpm exec wrangler secret put SHOPIFY_APP_URL   # the Worker's public URL
    pnpm exec wrangler secret put SCOPES            # read_products,write_app_proxy,read_themes
-   pnpm exec wrangler secret put DATABASE_URL
    ```
 
    `SHOPIFY_APP_HANDLE` (app-embed status detection) and `SHOP_CUSTOM_DOMAIN` are optional.
 
-2. Run database migrations against the production database:
+2. Apply pending D1 migrations to the Cloudflare database:
 
    ```bash
-   DATABASE_URL="<production url>" pnpm exec prisma migrate deploy
+   pnpm db:migrate:remote
    ```
+
+   Migrations are SQL files in `prisma/d1-migrations`. After changing `prisma/schema.prisma`, generate the next one with `pnpm exec prisma migrate diff --from-local-d1 --to-schema-datamodel prisma/schema.prisma --script` and save it as the next numbered file.
 
 3. Build and deploy the Worker:
 
@@ -125,8 +125,6 @@ The app runs on Cloudflare Workers (`wrangler.jsonc`, entry point `worker/app.ts
    ```
 
 4. Put the Worker URL in `shopify.app.toml` (`application_url` and `[auth] redirect_urls`), then run `pnpm deploy` to release the app configuration and theme extension.
-
-The database must be reachable from Cloudflare. For connection pooling, create a Hyperdrive configuration and add its binding as described in `wrangler.jsonc`; `worker/app.ts` uses it instead of `DATABASE_URL` when it's bound.
 
 ## Merchant Workflow
 

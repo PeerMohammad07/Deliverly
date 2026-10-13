@@ -19,11 +19,8 @@ const requestHandler = createRequestHandler(
 
 export default {
   async fetch(request, env, ctx) {
-    // One database client per request: Workers can't share connections
-    // between requests. Hyperdrive pools connections when it's bound.
-    const prisma = createPrismaClient(
-      env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL ?? "",
-    );
+    // One database client per request, on the D1 binding.
+    const prisma = createPrismaClient(env.DB);
     return runWithPrisma(prisma, async () => {
       try {
         return await requestHandler(request, { cloudflare: { env, ctx } });

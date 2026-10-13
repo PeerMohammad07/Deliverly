@@ -1,23 +1,21 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaD1 } from "@prisma/adapter-d1";
 
 /**
- * Cloudflare Workers can't reuse a database connection across requests
- * (a shared client hangs the second request), so worker/app.ts creates
- * one client per request and runs the request inside runWithPrisma.
- * The default export resolves to that request's client, so the rest of
- * the app keeps importing `prisma` as before.
+ * The database is Cloudflare D1, reached through the request's `env.DB`
+ * binding. worker/app.ts creates one client per request and runs the
+ * request inside runWithPrisma, so nothing database-related is shared
+ * between requests. The default export resolves to that request's
+ * client, so the rest of the app keeps importing `prisma` as before.
  */
 const requestClient = new AsyncLocalStorage<PrismaClient>();
 
-export function createPrismaClient(connectionString: string): PrismaClient {
-  if (!connectionString) {
-    throw new Error(
-      "No database connection string. Set the DATABASE_URL secret or a HYPERDRIVE binding.",
-    );
+export function createPrismaClient(database: D1Database): PrismaClient {
+  if (!database) {
+    throw new Error("No D1 database. Check the DB binding in wrangler.jsonc.");
   }
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  return new PrismaClient({ adapter: new PrismaD1(database) });
 }
 
 export function runWithPrisma<T>(client: PrismaClient, fn: () => T): T {
