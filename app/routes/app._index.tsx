@@ -16,6 +16,8 @@ import {
 import { OverviewCards } from "../components/dashboard/overview-cards";
 import { RecentRules } from "../components/dashboard/recent-rules";
 import { StorefrontSyncBanner } from "../components/storefront-sync-banner";
+import { CountryCoverageBanner } from "../components/country-coverage-banner";
+import { findCountryCoverageGap } from "../utils/country-coverage";
 import { getStorefrontSyncStatus } from "../services/storefrontSync.server";
 import { SetupGuide } from "../components/dashboard/setup-guide";
 import { StorefrontDisplay } from "../components/dashboard/storefront-display";
@@ -112,6 +114,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       recent,
       shop,
       syncStatus: await getStorefrontSyncStatus(shop),
+      coverageGap: findCountryCoverageGap(rules),
       appEmbed: {
         enabled: await readAppEmbedEnabled(admin, shop),
         editorUrl: buildThemeEditorUrl(shop, process.env.SHOPIFY_API_KEY ?? ""),
@@ -126,7 +129,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function Dashboard() {
-  const { stats, recent, shop, appEmbed, syncStatus } =
+  const { stats, recent, shop, appEmbed, syncStatus, coverageGap } =
     useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const navigate = useNavigate();
@@ -219,6 +222,7 @@ export default function Dashboard() {
         </s-paragraph>
 
         <StorefrontSyncBanner status={syncStatus} />
+        <CountryCoverageBanner gap={coverageGap} />
 
         <SetupGuide
           hidden={hidden}

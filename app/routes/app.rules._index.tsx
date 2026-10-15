@@ -8,9 +8,11 @@ import type {
 import { data, useLoaderData, useNavigate, useNavigation } from "react-router";
 import { authenticate } from "../shopify.server";
 import {
+  getCountryCoverageGap,
   getRulePageForShop,
   toDisplayRule,
 } from "../services/deliveryRule.service.server";
+import { CountryCoverageBanner } from "../components/country-coverage-banner";
 import { handleRuleRowAction } from "../services/rule-row-action.server";
 import {
   getStorefrontSyncStatus,
@@ -100,6 +102,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return {
       rules: serialized,
       syncStatus: await getStorefrontSyncStatus(shop),
+      coverageGap: await getCountryCoverageGap(shop),
       shop,
       status,
       counts,
@@ -418,6 +421,7 @@ export default function EtaRulesPage() {
   const {
     rules,
     syncStatus,
+    coverageGap,
     counts,
     status,
     query: loadedQuery,
@@ -505,6 +509,7 @@ export default function EtaRulesPage() {
       ) : null}
       <s-stack direction="block" gap="base">
         <StorefrontSyncBanner status={syncStatus} />
+        <CountryCoverageBanner gap={coverageGap} />
         <s-paragraph color="subdued">
           Manage the delivery estimates shown to your customers.
         </s-paragraph>

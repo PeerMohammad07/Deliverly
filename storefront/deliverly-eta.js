@@ -25,6 +25,12 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
   // A device clock this far behind the page's render time is wrong; its
   // dates would be too, so the server works the estimate out instead.
   var CLOCK_SLACK_SECONDS = 300;
+  // Shopify's storefront geolocation (the one its Geolocation app uses).
+  var GEO_URL = "/browsing_context_suggestions.json?country[enabled]=true";
+  var IP_KEY = "deliverly:ip-country";
+  var IP_TTL_MS = 24 * 60 * 60 * 1000;
+  // Past this, the estimate uses the Markets country instead of waiting.
+  var IP_TIMEOUT_MS = 1500;
   // Countdown deadline: Date.now() plus the estimate's secondsLeft, so only
   // elapsed time matters, not whether the device clock is right.
   // Date.now (not performance.now) keeps counting while the device sleeps.
@@ -108,18 +114,82 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
     }
     return null;
   }
-  // Shopper's country (Shopify Markets), so country rules can apply.
-  function readCountry() {
-    var c = null;
-    var tag = document.querySelector("[data-deliverly-product-context]");
-    try {
-      c = tag && JSON.parse(tag.textContent || "").country;
-    } catch (e) {
-      c = null;
-    }
-    if (!c) c = window.Shopify && window.Shopify.country;
-    c = typeof c === "string" ? c.trim().toUpperCase() : "";
+  function toCountry(v) {
+    var c = typeof v === "string" ? v.trim().toUpperCase() : "";
     return /^[A-Z]{2}$/.test(c) ? c : null;
+  }
+  // Country Shopify Markets assigned. Without a market for the shopper's
+  // country this is the store's main country, so it's the last resort.
+  function marketsCountry() {
+    var all = readJson("[data-deliverly-product-context]");
+    for (var i = 0; i < all.length; i += 1) {
+      var c = toCountry(all[i] && all[i].country);
+      if (c) return c;
+    }
+    return toCountry(window.Shopify && window.Shopify.country);
+  }
+  function storeGet(key) {
+    try {
+      return window.localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  }
+  function storeSet(key, value) {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (e) {
+      // Private mode or blocked storage: just don't remember.
+    }
+  }
+  // IP country from an earlier visit, if still fresh: "IN|1760000000000".
+  function cachedIpCountry() {
+    var parts = (storeGet(IP_KEY) || "").split("|");
+    var c = toCountry(parts[0]);
+    var at = Number(parts[1]);
+    return c && isFinite(at) && Date.now() - at < IP_TTL_MS ? c : null;
+  }
+  // Shopper's country: their IP country (Shopify's geolocation), else the
+  // Markets country. undefined until the first IP lookup finishes or
+  // times out; later visits reuse the remembered IP country.
+  var country;
+  var countryWaiters = null;
+  function resolveCountry(done) {
+    var known = cachedIpCountry();
+    if (known) {
+      country = known;
+      return done();
+    }
+    if (countryWaiters) return countryWaiters.push(done);
+    countryWaiters = [done];
+    var settled = false;
+    function settle(c) {
+      if (settled) return;
+      settled = true;
+      country = c || marketsCountry();
+      var waiting = countryWaiters;
+      countryWaiters = null;
+      for (var i = 0; i < waiting.length; i += 1) waiting[i]();
+    }
+    window.setTimeout(function () {
+      settle(null);
+    }, IP_TIMEOUT_MS);
+    if (typeof fetch === "undefined") return settle(null);
+    fetch(GEO_URL, { credentials: "same-origin" })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error("no geolocation");
+        return res.json();
+      })
+      .then(function (data) {
+        var dv = data && data.detected_values;
+        var c = toCountry(dv && dv.country && dv.country.handle);
+        // Remember it even if it came back after the timeout.
+        if (c) storeSet(IP_KEY, c + "|" + Date.now());
+        settle(c);
+      })
+      .catch(function () {
+        settle(null);
+      });
   }
   function urlHandle() {
     var m = /\/products\/([^/?#]+)/.exec(window.location.pathname || "");
@@ -266,7 +336,7 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
     var rule = selectRule(config.rules, {
       productId: productId,
       collectionIds: ctx.collectionIds,
-      country: readCountry(),
+      country: country || null,
     });
     if (!rule) return { enabled: false };
     try {
@@ -301,7 +371,6 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
     var refreshing = shownGid === gid;
     if (!refreshing) showLoading(host);
     if (typeof fetch === "undefined") return hideEta();
-    var country = readCountry();
     var qs = "?productId=" + encodeURIComponent(gid) + (country ? "&country=" + country : "");
     fetch(ETA_URL + qs, {
       cache: "no-store",
@@ -405,7 +474,11 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
     host = etaHost();
     if (!host) return;
     if (editor) showMessage(host, PREVIEW);
-    if (gid) loadEta(host, gid);
+    if (!gid) return;
+    // Country rules need the shopper's country first (IP lookup on the
+    // first visit, then remembered).
+    if (country === undefined) return resolveCountry(syncEta);
+    loadEta(host, gid);
   }
   function patchHistory() {
     ["pushState", "replaceState"].forEach(function (m) {

@@ -150,6 +150,10 @@ export function CountrySection({
                 )}
               </div>
             </s-box>
+            <s-paragraph color="subdued">
+              Shoppers outside these countries won’t see an estimate unless
+              you also have a rule for all countries.
+            </s-paragraph>
           </s-stack>
         ) : null}
 
@@ -185,8 +189,9 @@ export function CountrySection({
         <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small-200">
           <s-icon type="info" size="small" />
           <s-paragraph color="subdued">
-            Uses the shopper’s country from Shopify Markets. A rule for the
-            shopper’s country wins over an all-countries rule.
+            We detect each shopper’s country automatically from their
+            location. If a shopper matches both a rule for their country and
+            a rule for all countries, the country rule is used.
           </s-paragraph>
         </s-grid>
       </s-stack>

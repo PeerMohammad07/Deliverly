@@ -14,6 +14,7 @@ import {
 } from "../repositories/deliveryRule.repository.server";
 import { formatCountries, serializeCountries } from "../utils/countries";
 import type { OverlapCandidate } from "../utils/rule-overlaps";
+import { findCountryCoverageGap } from "../utils/country-coverage";
 import {
   serializeExcludedDays,
   serializeMessageParts,
@@ -269,6 +270,24 @@ export async function getOverlapCandidates(
       error,
     });
     return [];
+  }
+}
+
+/**
+ * Country rules without an all-countries fallback, for the admin
+ * warning. Best-effort: on failure no warning is shown.
+ */
+export async function getCountryCoverageGap(
+  shop: string,
+): Promise<ReturnType<typeof findCountryCoverageGap>> {
+  try {
+    return findCountryCoverageGap(await getRulesForShop(shop));
+  } catch (error) {
+    console.error("[deliveryRule.service] coverage check failed", {
+      shop,
+      error,
+    });
+    return null;
   }
 }
 
