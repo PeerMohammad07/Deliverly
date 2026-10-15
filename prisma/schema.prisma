@@ -41,6 +41,8 @@ model Session {
 model DeliveryRule {
   id              String       @id @default(cuid())
   shop            String
+  // Set to the shop only on its all-countries DEFAULT rule, so the unique
+  // index allows one of those per shop. Country DEFAULT rules leave it null.
   defaultShopKey  String?      @unique
   name            String
   type            RuleType
@@ -51,6 +53,9 @@ model DeliveryRule {
   // Order cutoff in minutes after midnight, in the shop's time zone.
   // null = no cutoff.
   cutoffMinutes   Int?
+  // ISO country codes, comma-separated and sorted ("DE,FR").
+  // "" = all countries.
+  countries       String       @default("")
   customMessage   String
   enabled         Boolean      @default(true)
   createdAt       DateTime     @default(now())
@@ -82,4 +87,20 @@ enum RuleType {
 enum TargetType {
   PRODUCT
   COLLECTION
+}
+
+/// Sync state of a shop's storefront config metafield ($app /
+/// deliverly_config). Out of date while syncedAt is null or older than
+/// requestedAt; the admin then shows a banner with a retry.
+model StorefrontSync {
+  shop        String    @id
+  /// Last time a change asked for a sync.
+  requestedAt DateTime  @default(now())
+  /// Start time of the newest sync that reached Shopify.
+  syncedAt    DateTime?
+  /// Time zone in the last written config, to spot shop/update changes.
+  timezone    String?
+  /// "TOO_LARGE" or the last failure's message; null after a success.
+  lastError   String?
+  updatedAt   DateTime  @updatedAt
 }

@@ -12,6 +12,11 @@ import {
   toDisplayRule,
 } from "../services/deliveryRule.service.server";
 import { handleRuleRowAction } from "../services/rule-row-action.server";
+import {
+  getStorefrontSyncStatus,
+  syncStorefrontConfig,
+} from "../services/storefrontSync.server";
+import { StorefrontSyncBanner } from "../components/storefront-sync-banner";
 import { useRuleRowActions } from "../hooks/use-rule-row-actions";
 import { formatCutoffTime, parseExcludedDays } from "../utils/delivery-dates";
 import { RulesEmptyState } from "../components/rules/rules-empty-state";
@@ -77,6 +82,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         name: display.name,
         eta: display.displayEta,
         targets: display.displayTargets,
+        countries: display.displayCountries,
         processingDays: display.processingDays,
         cutoffMinutes: display.cutoffMinutes,
         kind: display.displayTypeLabel,
@@ -93,6 +99,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     };
     return {
       rules: serialized,
+      syncStatus: await getStorefrontSyncStatus(shop),
       shop,
       status,
       counts,
@@ -114,14 +121,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
  * never throws to the boundary.
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = (session as { shop?: string })?.shop;
   if (!shop) {
     throw new Response("Unauthorized: missing shop", { status: 401 });
   }
 
   const formData = await request.formData();
-  return data(await handleRuleRowAction(shop, formData));
+  const result = await handleRuleRowAction(shop, formData);
+  // Toggle and delete change what the storefront shows.
+  if (result.ok) await syncStorefrontConfig(shop, admin);
+  return data(result);
 };
 
 type RuleStatus = "all" | "active" | "inactive";
@@ -315,7 +325,10 @@ function RulesTable({
                   </s-stack>
                 </s-table-cell>
                 <s-table-cell>
-                  <s-text>{rule.targets}</s-text>
+                  <s-stack direction="block" gap="none">
+                    <s-text>{rule.targets}</s-text>
+                    <s-text color="subdued">{rule.countries}</s-text>
+                  </s-stack>
                 </s-table-cell>
                 <s-table-cell>
                   <s-stack direction="block" gap="none">
@@ -404,6 +417,7 @@ function RulesTable({
 export default function EtaRulesPage() {
   const {
     rules,
+    syncStatus,
     counts,
     status,
     query: loadedQuery,
@@ -490,6 +504,7 @@ export default function EtaRulesPage() {
         </s-button>
       ) : null}
       <s-stack direction="block" gap="base">
+        <StorefrontSyncBanner status={syncStatus} />
         <s-paragraph color="subdued">
           Manage the delivery estimates shown to your customers.
         </s-paragraph>

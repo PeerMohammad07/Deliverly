@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { deleteAllRulesForShop } from "../repositories/deliveryRule.repository.server";
+import { deleteSyncState } from "../repositories/storefrontSync.repository.server";
 
 /**
  * Mandatory compliance webhooks (customers/data_request, customers/redact,
@@ -25,6 +26,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       break;
     case "SHOP_REDACT": {
       const rules = await deleteAllRulesForShop(shop);
+      await deleteSyncState(shop);
       const sessions = await db.session.deleteMany({ where: { shop } });
       console.log(
         `Redacted ${shop}: ${rules} rules, ${sessions.count} sessions deleted`,

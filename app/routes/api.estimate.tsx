@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { isValidShopDomain } from "../services/deliveryRule.service.server";
+import { toCountryCode } from "../utils/countries";
 import {
   getDeliveryEstimate,
   InvalidProductError,
@@ -9,7 +10,7 @@ import {
 
 /**
  * Storefront estimate endpoint, served through the Shopify App Proxy
- * (GET shop.com/apps/delivery-estimate?productId=...).
+ * (GET shop.com/apps/delivery-estimate?productId=...&country=FR).
  *
  * Security model:
  * - authenticate.public.appProxy verifies the Shopify HMAC signature
@@ -55,6 +56,8 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
   }
 
   const productId = (url.searchParams.get("productId") ?? "").trim();
+  // Unknown or missing country: only all-countries rules apply.
+  const country = toCountryCode(url.searchParams.get("country"));
 
   try {
     // Estimates change at the cutoff and at midnight — never cache them.
@@ -62,6 +65,7 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
       await getDeliveryEstimate({
         shop,
         productId,
+        country,
         admin,
         cache: context.cloudflare.env.CACHE,
         waitUntil: (promise) => context.cloudflare.ctx.waitUntil(promise),

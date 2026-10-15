@@ -5,6 +5,7 @@ interface RecentRule {
   name: string;
   kind: string;
   targets: string;
+  countries: string;
   eta: string;
   enabled: boolean;
 }
@@ -52,7 +53,10 @@ export function RecentRules({ rules, loading }: RecentRulesProps) {
                   </s-stack>
                 </s-table-cell>
                 <s-table-cell>
-                  <s-text>{rule.targets}</s-text>
+                  <s-stack direction="block" gap="none">
+                    <s-text>{rule.targets}</s-text>
+                    <s-text color="subdued">{rule.countries}</s-text>
+                  </s-stack>
                 </s-table-cell>
                 <s-table-cell>
                   <s-text>

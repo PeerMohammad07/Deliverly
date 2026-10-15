@@ -29,20 +29,39 @@ export interface CreateRuleData {
   maxDeliveryDays: number;
   excludedDays: string;
   cutoffMinutes: number | null;
+  /** Serialized ISO country codes ("DE,FR"); "" = all countries. */
+  countries: string;
   customMessage: string;
   enabled: boolean;
   targetIds: string[];
 }
 
 /**
- * Thrown when a second DEFAULT rule is created for a shop. The unique
- * defaultShopKey index (set only on DEFAULT rules) enforces this in the
- * database, so two simultaneous requests can't both succeed.
+ * Thrown when a second all-countries DEFAULT rule is created for a shop.
+ * The unique defaultShopKey index (set only on that rule) enforces this
+ * in the database, so two simultaneous requests can't both succeed.
+ * DEFAULT rules limited to countries aren't limited.
  */
 export class DuplicateDefaultRuleError extends Error {
-  constructor(shop: string) {
-    super(`Shop "${shop}" already has a default delivery rule`);
+  constructor(
+    shop: string,
+    /** The shop's existing all-countries default, when it could be found. */
+    readonly existing: { id: string; name: string; enabled: boolean } | null,
+  ) {
+    super(`Shop "${shop}" already has an all-countries default rule`);
     this.name = "DuplicateDefaultRuleError";
+  }
+}
+
+/** The rule holding the shop's all-countries default slot, if any. */
+async function findAllCountriesDefault(shop: string) {
+  try {
+    return await prisma.deliveryRule.findFirst({
+      where: { defaultShopKey: shop },
+      select: { id: true, name: true, enabled: true },
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -75,10 +94,23 @@ function isRecordNotFoundError(error: unknown): boolean {
  * Cloudflare D1 doesn't support transactions: Prisma runs the queries of
  * a transaction one by one anyway. So writes here don't rely on them.
  * Ownership is part of each write's WHERE (id + shop), and the single
- * DEFAULT rule per shop is a unique index. Replacing a rule's targets is
- * a delete followed by an insert; the input is validated and de-duplicated
- * beforehand, so the insert failing in between is not expected.
+ * all-countries DEFAULT rule per shop is a unique index. Updating a rule's
+ * targets only deletes the dropped ones and inserts the new ones, so
+ * targets kept across the edit are never touched.
  */
+
+/** The unique key that allows one all-countries DEFAULT rule per shop. */
+function defaultShopKey(
+  shop: string,
+  type: CreateRuleData["type"],
+  countries: string,
+): string | null {
+  return type === "DEFAULT" && countries === "" ? shop : null;
+}
+
+function targetKey(target: { targetType: string; targetId: string }): string {
+  return `${target.targetType}:${target.targetId}`;
+}
 
 function targetRows(
   ruleId: string,
@@ -181,24 +213,25 @@ export async function listRulePageByShop(
 }
 
 /**
- * Resolution finders. Each returns at most one ENABLED rule (or null)
- * for a single shop — the building blocks of PRODUCT → COLLECTION →
- * DEFAULT precedence. Targets are intentionally NOT included: the
- * date-calculation step only needs the rule's timing/message fields,
- * so resolution stays at exactly one query per level.
+ * Resolution finders. Each returns a shop's ENABLED rules for one level,
+ * newest first — the building blocks of PRODUCT → COLLECTION → DEFAULT
+ * precedence. The caller picks among them by country (see pickRule), so
+ * a level costs one query whatever the countries are. Targets are
+ * intentionally NOT included: the date-calculation step only needs the
+ * rule's timing/message fields.
  */
 const RESOLUTION_ORDER_BY = [{ createdAt: "desc" }, { id: "desc" }] as const;
 
-export async function findEnabledProductRule(
+export async function findEnabledProductRules(
   shop: string,
   productId: string,
-): Promise<DeliveryRule | null> {
+): Promise<DeliveryRule[]> {
   if (!shop || typeof shop !== "string") throw new Error("Shop is required");
   if (!productId || typeof productId !== "string") {
     throw new Error("Product ID is required");
   }
 
-  return prisma.deliveryRule.findFirst({
+  return prisma.deliveryRule.findMany({
     where: {
       shop: shop.trim().toLowerCase(),
       type: "PRODUCT",
@@ -209,14 +242,14 @@ export async function findEnabledProductRule(
   });
 }
 
-export async function findEnabledCollectionRule(
+export async function findEnabledCollectionRules(
   shop: string,
   collectionIds: string[],
-): Promise<DeliveryRule | null> {
+): Promise<DeliveryRule[]> {
   if (!shop || typeof shop !== "string") throw new Error("Shop is required");
-  if (!Array.isArray(collectionIds) || collectionIds.length === 0) return null;
+  if (!Array.isArray(collectionIds) || collectionIds.length === 0) return [];
 
-  return prisma.deliveryRule.findFirst({
+  return prisma.deliveryRule.findMany({
     where: {
       shop: shop.trim().toLowerCase(),
       type: "COLLECTION",
@@ -229,12 +262,12 @@ export async function findEnabledCollectionRule(
   });
 }
 
-export async function findEnabledDefaultRule(
+export async function findEnabledDefaultRules(
   shop: string,
-): Promise<DeliveryRule | null> {
+): Promise<DeliveryRule[]> {
   if (!shop || typeof shop !== "string") throw new Error("Shop is required");
 
-  return prisma.deliveryRule.findFirst({
+  return prisma.deliveryRule.findMany({
     where: { shop: shop.trim().toLowerCase(), type: "DEFAULT", enabled: true },
     orderBy: [...RESOLUTION_ORDER_BY],
   });
@@ -251,7 +284,7 @@ export async function createRule(
     ({ id: ruleId } = await prisma.deliveryRule.create({
       data: {
         shop,
-        defaultShopKey: data.type === "DEFAULT" ? shop : null,
+        defaultShopKey: defaultShopKey(shop, data.type, data.countries),
         name: data.name,
         type: data.type,
         processingDays: data.processingDays,
@@ -259,6 +292,7 @@ export async function createRule(
         maxDeliveryDays: data.maxDeliveryDays,
         excludedDays: data.excludedDays,
         cutoffMinutes: data.cutoffMinutes,
+        countries: data.countries,
         customMessage: data.customMessage,
         enabled: data.enabled,
       },
@@ -266,7 +300,10 @@ export async function createRule(
     }));
   } catch (error) {
     if (data.type === "DEFAULT" && isUniqueConstraintError(error)) {
-      throw new DuplicateDefaultRuleError(shop);
+      throw new DuplicateDefaultRuleError(
+        shop,
+        await findAllCountriesDefault(shop),
+      );
     }
     throw error;
   }
@@ -284,8 +321,8 @@ export async function createRule(
 
 /**
  * Update a rule and replace its targets. The update is scoped to the
- * shop in the database; switching to DEFAULT fails on the unique index
- * when the shop already has one. DEFAULT rules always end with zero
+ * shop in the database; switching to an all-countries DEFAULT fails on
+ * the unique index when the shop already has one. DEFAULT rules always end with zero
  * targets.
  */
 export async function updateRule(
@@ -301,7 +338,11 @@ export async function updateRule(
     await prisma.deliveryRule.update({
       where: { id, shop: normalizedShop },
       data: {
-        defaultShopKey: data.type === "DEFAULT" ? normalizedShop : null,
+        defaultShopKey: defaultShopKey(
+          normalizedShop,
+          data.type,
+          data.countries,
+        ),
         name: data.name,
         type: data.type,
         processingDays: data.processingDays,
@@ -309,6 +350,7 @@ export async function updateRule(
         maxDeliveryDays: data.maxDeliveryDays,
         excludedDays: data.excludedDays,
         cutoffMinutes: data.cutoffMinutes,
+        countries: data.countries,
         customMessage: data.customMessage,
         enabled: data.enabled,
       },
@@ -317,17 +359,37 @@ export async function updateRule(
   } catch (error) {
     if (isRecordNotFoundError(error)) throw new RuleNotFoundError(id);
     if (data.type === "DEFAULT" && isUniqueConstraintError(error)) {
-      throw new DuplicateDefaultRuleError(normalizedShop);
+      throw new DuplicateDefaultRuleError(
+        normalizedShop,
+        await findAllCountriesDefault(normalizedShop),
+      );
     }
     throw error;
   }
 
   // The rule belongs to this shop (the update above matched it).
-  await prisma.ruleTarget.deleteMany({ where: { ruleId: id } });
-  if (data.type !== "DEFAULT" && data.targetIds.length > 0) {
-    await prisma.ruleTarget.createMany({
-      data: targetRows(id, data.type, data.targetIds),
+  // Only remove dropped targets and add new ones: without transactions,
+  // a failed insert then can't leave the rule with no targets at all.
+  const wanted = targetRows(
+    id,
+    data.type,
+    data.type === "DEFAULT" ? [] : data.targetIds,
+  );
+  const wantedKeys = new Set(wanted.map(targetKey));
+  const current = await prisma.ruleTarget.findMany({
+    where: { ruleId: id },
+    select: { id: true, targetType: true, targetId: true },
+  });
+  const currentKeys = new Set(current.map(targetKey));
+  const dropped = current.filter((t) => !wantedKeys.has(targetKey(t)));
+  const added = wanted.filter((t) => !currentKeys.has(targetKey(t)));
+  if (dropped.length > 0) {
+    await prisma.ruleTarget.deleteMany({
+      where: { ruleId: id, id: { in: dropped.map((t) => t.id) } },
     });
+  }
+  if (added.length > 0) {
+    await prisma.ruleTarget.createMany({ data: added });
   }
 
   const rule = await getRuleByIdForShop(normalizedShop, id);

@@ -32,6 +32,12 @@ import {
   splitCutoffMinutes,
   type StorefrontDateStyle,
 } from "../utils/delivery-dates";
+import { parseCountries } from "../utils/countries";
+import {
+  findRuleOverlaps,
+  type OverlapCandidate,
+} from "../utils/rule-overlaps";
+import { CountrySection } from "./rule-form/country-section";
 import { type CutoffFieldsValue } from "./rule-form/cutoff-time-fields";
 import { DeliveryTimingSections } from "./rule-form/delivery-timing-sections";
 import { StorefrontMessageSection } from "./rule-form/storefront-message-section";
@@ -53,6 +59,8 @@ export interface RuleFormInitial {
   name: string;
   type: RuleTypeInput;
   targets: RuleTargetPick[];
+  /** Sorted country codes; [] = all countries. */
+  countries: string[];
   processingDays: string;
   minDeliveryDays: string;
   maxDeliveryDays: string;
@@ -132,6 +140,11 @@ function initTargets(raw: string | undefined): RuleTargetPick[] {
     .map((id) => ({ id, title: id }));
 }
 
+/** Choosing "Specific countries" counts as a change, even with none ticked. */
+function countriesSnapshot(limited: boolean, countries: string[]): string {
+  return limited ? `specific:${countries.join(",")}` : "all";
+}
+
 function initType(raw: string | undefined): RuleTypeInput {
   return raw === "PRODUCT" || raw === "COLLECTION" || raw === "DEFAULT"
     ? raw
@@ -147,9 +160,15 @@ export function RuleForm({
   initial,
   labels,
   timeZone,
+  saved,
+  otherRules,
 }: {
   initial: RuleFormInitial;
   labels: RuleFormLabels;
+  /** The saved rule being edited; null on create. */
+  saved: { id: string; createdAt: string } | null;
+  /** The shop's rules, to warn when this one overlaps them. */
+  otherRules: OverlapCandidate[];
   /** Shop's IANA time zone; null when it couldn't be loaded. */
   timeZone: string | null;
 }) {
@@ -187,6 +206,13 @@ export function RuleForm({
     () => (actionData ? initTargets(serverValues?.targetIds) : initial.targets),
   );
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [countries, setCountries] = useState<string[]>(() =>
+    actionData ? parseCountries(serverValues?.countries) : initial.countries,
+  );
+  // "Specific countries" stays chosen while the list is still empty.
+  const [limitCountries, setLimitCountries] = useState(
+    () => countries.length > 0,
+  );
   const [processingDays, setProcessingDays] = useState(
     serverValues?.processingDays ?? initial.processingDays,
   );
@@ -251,6 +277,10 @@ export function RuleForm({
         .map((t) => t.id)
         .sort()
         .join(","),
+      countries: countriesSnapshot(
+        initial.countries.length > 0,
+        initial.countries,
+      ),
       processingDays: initial.processingDays,
       minDays: initial.minDeliveryDays,
       maxDays: initial.maxDeliveryDays,
@@ -273,6 +303,7 @@ export function RuleForm({
       .map((t) => t.id)
       .sort()
       .join(","),
+    countries: countriesSnapshot(limitCountries, countries),
     processingDays,
     minDays,
     maxDays,
@@ -447,6 +478,23 @@ export function RuleForm({
   const typeRef = useRef(type);
   typeRef.current = type;
 
+  // Saved values decide which rule shoppers get, so compare those.
+  const overlaps = useMemo(
+    () =>
+      findRuleOverlaps(
+        {
+          id: saved?.id ?? null,
+          type,
+          countries: limitCountries ? countries : [],
+          targetIds: type === "DEFAULT" ? [] : selectedTargets.map((t) => t.id),
+          enabled,
+          createdAt: saved?.createdAt ?? null,
+        },
+        otherRules,
+      ),
+    [saved, type, limitCountries, countries, selectedTargets, enabled, otherRules],
+  );
+
   function handleTypeChange(next: RuleTypeInput) {
     // Picks are resource-specific — never carry products into a
     // collection rule (or vice versa).
@@ -509,6 +557,7 @@ export function RuleForm({
     fd.append("name", name);
     fd.append("type", type);
     fd.append("targetIds", selectedTargets.map((t) => t.id).join(", "));
+    fd.append("countries", limitCountries ? countries.join(",") : "");
     fd.append("processingDays", processingDays);
     fd.append("minDeliveryDays", minDays);
     fd.append("maxDeliveryDays", maxDays);
@@ -525,6 +574,14 @@ export function RuleForm({
     // highlight immediately with no spinner flash. The server re-validates
     // as source of truth.
     const checked = validateRuleInput(parseRuleFormData(fd));
+    // An empty list would save as "all countries"; ask for a pick instead.
+    if (limitCountries && countries.length === 0) {
+      checked.valid = false;
+      checked.errors = {
+        ...checked.errors,
+        countries: "Choose at least one country, or pick All countries.",
+      };
+    }
     if (!checked.valid) {
       setClientErrors(checked.errors);
       const now = Date.now();
@@ -554,6 +611,8 @@ export function RuleForm({
     name,
     type,
     selectedTargets,
+    countries,
+    limitCountries,
     processingDays,
     minDays,
     maxDays,
@@ -600,6 +659,8 @@ export function RuleForm({
     setType(initial.type);
     setSelectedTargets(initial.targets);
     setPickerError(null);
+    setCountries(initial.countries);
+    setLimitCountries(initial.countries.length > 0);
     setProcessingDays(initial.processingDays);
     setMinDays(initial.minDeliveryDays);
     setMaxDays(initial.maxDeliveryDays);
@@ -728,6 +789,15 @@ export function RuleForm({
                   }
                   onOpenPicker={openPicker}
                   onRemoveTarget={removeTarget}
+                />
+
+                <CountrySection
+                  limited={limitCountries}
+                  countries={countries}
+                  overlaps={overlaps}
+                  errors={errors}
+                  onLimitedChange={setLimitCountries}
+                  onCountriesChange={setCountries}
                 />
 
                 <DeliveryTimingSections

@@ -7,10 +7,12 @@ import type {
 import { data, redirect, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import {
+  getOverlapCandidates,
   getRuleForEdit,
   updateDeliveryRule,
 } from "../services/deliveryRule.service.server";
 import { fetchShopTimeZone } from "../services/shopTimeZone.server";
+import { syncStorefrontConfig } from "../services/storefrontSync.server";
 import { RuleNotFoundError } from "../repositories/deliveryRule.repository.server";
 import {
   parseRuleFormData,
@@ -23,6 +25,7 @@ import {
   parseStoredMessage,
 } from "../utils/delivery-dates";
 import { actionValues } from "../utils/action-values";
+import { parseCountries } from "../utils/countries";
 import {
   RuleForm,
   type RuleFormActionData,
@@ -107,9 +110,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const targetIds = rule.targets.map((t) => t.targetId);
-  const [titles, timeZone] = await Promise.all([
+  const [titles, timeZone, otherRules] = await Promise.all([
     resolveTargetTitles(admin, targetIds),
     fetchShopTimeZone(admin),
+    getOverlapCandidates(shop),
   ]);
   const parts = parseStoredMessage(rule.customMessage) ?? {
     ...DEFAULT_MESSAGE_PARTS,
@@ -123,6 +127,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       id: t.targetId,
       title: titles[t.targetId] ?? t.targetId,
     })),
+    countries: parseCountries(rule.countries),
     processingDays: String(rule.processingDays),
     minDeliveryDays: String(rule.minDeliveryDays),
     maxDeliveryDays: String(rule.maxDeliveryDays),
@@ -140,11 +145,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     enabled: rule.enabled,
   };
 
-  return { initial, ruleId: id, timeZone };
+  return {
+    initial,
+    ruleId: id,
+    createdAt: rule.createdAt.toISOString(),
+    timeZone,
+    otherRules,
+  };
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = (session as { shop?: string })?.shop;
   if (!shop) {
     throw new Response("Unauthorized: missing shop", { status: 401 });
@@ -167,6 +178,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   try {
     await updateDeliveryRule(shop, id, checked.value);
+    // A failed sync doesn't fail the save: the rules page shows a retry.
+    await syncStorefrontConfig(shop, admin);
     return redirect("/app/rules?notice=updated");
   } catch (error) {
     if (error instanceof RuleNotFoundError) {
@@ -200,12 +213,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function EditEtaRulePage() {
-  const { initial, ruleId, timeZone } = useLoaderData<typeof loader>();
+  const { initial, ruleId, createdAt, timeZone, otherRules } =
+    useLoaderData<typeof loader>();
   return (
     <RuleForm
       key={ruleId}
       initial={initial}
       timeZone={timeZone}
+      saved={{ id: ruleId, createdAt }}
+      otherRules={otherRules}
       labels={{
         title: "Edit rule",
         subtitle:

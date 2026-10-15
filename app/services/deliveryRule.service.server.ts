@@ -12,6 +12,8 @@ import {
   type RuleListPage,
   type RuleListStatus,
 } from "../repositories/deliveryRule.repository.server";
+import { formatCountries, serializeCountries } from "../utils/countries";
+import type { OverlapCandidate } from "../utils/rule-overlaps";
 import {
   serializeExcludedDays,
   serializeMessageParts,
@@ -106,7 +108,18 @@ export type DisplayRule = DeliveryRuleWithTargets & {
   displayEta: string;
   displayTargets: string;
   displayTypeLabel: string;
+  /** "All countries", "France" or "France, Germany +3". */
+  displayCountries: string;
 };
+
+/** Shown under Countries when a second all-countries default is saved. */
+function duplicateDefaultMessage(error: DuplicateDefaultRuleError): string {
+  const existing = error.existing;
+  const label = existing
+    ? `“${existing.name}”${existing.enabled ? "" : " (inactive)"}`
+    : "Another rule";
+  return `${label} is already your default for all countries. Pick specific countries for this rule, or edit or delete that rule first.`;
+}
 
 /**
  * Create a rule for a shop. Validates input, enforces shop isolation,
@@ -140,6 +153,7 @@ export async function createDeliveryRule(
       maxDeliveryDays: v.maxDeliveryDays,
       excludedDays: serializeExcludedDays(v.excludedDays),
       cutoffMinutes: v.cutoffMinutes,
+      countries: serializeCountries(v.countries),
       customMessage: serializeMessageParts({
         prefix: v.msgPrefix,
         separator: v.msgSeparator,
@@ -160,9 +174,7 @@ export async function createDeliveryRule(
       const err = new Error("Invalid rule data") as Error & {
         fieldErrors?: Record<string, string>;
       };
-      err.fieldErrors = {
-        type: "This shop already has a store-wide default rule. Edit it instead of creating another.",
-      };
+      err.fieldErrors = { countries: duplicateDefaultMessage(error) };
       throw err;
     }
     // Preserve fieldErrors if already attached
@@ -229,7 +241,35 @@ export function toDisplayRule(rule: DeliveryRuleWithTargets): DisplayRule {
     displayEta: formatEtaRange(rule.minDeliveryDays, rule.maxDeliveryDays),
     displayTargets: formatTargets(rule),
     displayTypeLabel: formatRuleTypeLabel(rule.type),
+    displayCountries: formatCountries(rule.countries),
   };
+}
+
+/**
+ * The shop's rules in the shape the rule form needs to warn about
+ * overlaps. Best-effort: on failure the form just shows no warning.
+ */
+export async function getOverlapCandidates(
+  shop: string,
+): Promise<OverlapCandidate[]> {
+  try {
+    const rules = await getRulesForShop(shop);
+    return rules.map((rule) => ({
+      id: rule.id,
+      name: rule.name,
+      type: rule.type,
+      countries: rule.countries,
+      enabled: rule.enabled,
+      createdAt: rule.createdAt.toISOString(),
+      targetIds: rule.targets.map((t) => t.targetId),
+    }));
+  } catch (error) {
+    console.error("[deliveryRule.service] overlap lookup failed", {
+      shop,
+      error,
+    });
+    return [];
+  }
 }
 
 /**
@@ -283,6 +323,7 @@ export async function updateDeliveryRule(
       maxDeliveryDays: v.maxDeliveryDays,
       excludedDays: serializeExcludedDays(v.excludedDays),
       cutoffMinutes: v.cutoffMinutes,
+      countries: serializeCountries(v.countries),
       customMessage: serializeMessageParts({
         prefix: v.msgPrefix,
         separator: v.msgSeparator,
@@ -304,9 +345,7 @@ export async function updateDeliveryRule(
       const err = new Error("Invalid rule data") as Error & {
         fieldErrors?: Record<string, string>;
       };
-      err.fieldErrors = {
-        type: "This shop already has a store-wide default rule.",
-      };
+      err.fieldErrors = { countries: duplicateDefaultMessage(error) };
       throw err;
     }
     if (error instanceof RuleNotFoundError) throw error;

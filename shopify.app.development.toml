@@ -22,12 +22,25 @@ api_version = "2026-07"
   topics = [ "app/scopes_update" ]
 
   [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/update"
+  topics = [ "shop/update" ]
+
+  [[webhooks.subscriptions]]
   uri = "/webhooks/compliance"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_products,read_themes,write_app_proxy"
+
+# Storefront rule config, rebuilt from D1 on every rule change. Read by
+# the app embed as shop.metafields["$app"].deliverly_config.
+[shop.metafields.app.deliverly_config]
+type = "json"
+name = "Deliverly config"
+description = "Delivery rules for the storefront widget. Managed by Deliverly."
+access.admin = "merchant_read"
+access.storefront = "public_read"
 
 [app_proxy]
 url = "/api/estimate"

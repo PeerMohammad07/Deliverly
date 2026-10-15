@@ -5,6 +5,7 @@ import {
 } from "@shopify/shopify-app-react-router/server";
 import { RequestScopedSessionStorage } from "./session-storage.server";
 import { POLARIS_URL } from "./polaris";
+import { syncStorefrontConfig } from "./services/storefrontSync.server";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -18,6 +19,13 @@ const shopify = shopifyApp({
   polarisUrl: POLARIS_URL,
   future: {
     expiringOfflineAccessTokens: true,
+  },
+  hooks: {
+    // Install or reinstall: write the storefront config so the widget
+    // never reads values left over from a previous install.
+    afterAuth: async ({ session, admin }) => {
+      await syncStorefrontConfig(session.shop, admin);
+    },
   },
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }

@@ -1,7 +1,12 @@
 {% comment %}
   Deliverly product context — server-rendered Shopify signal.
-  Emits the current product's identifiers as inert JSON so the
-  app-embed JS can detect the product without fragile DOM scraping.
+  Emits inert JSON for the app-embed JS, so it needs no DOM scraping:
+  - product context: the product, its collections (numeric IDs, only
+    those on the Online Store), the shopper's country (Shopify Markets)
+    and the render time, used to spot a wrong device clock;
+  - config: the shop's delivery rules from the app-owned shop metafield
+    ($app resolves to this app's namespace in dev and production), so
+    the estimate needs no request to our server.
   Rendered only when Liquid has a product (product template / editor
   preview). No credentials, no API calls.
 {% endcomment %}
@@ -11,9 +16,18 @@
     {
       "productId": {{ product.id | json }},
       "productGid": {{ 'gid://shopify/Product/' | append: product.id | json }},
-      "handle": {{ product.handle | json }}
+      "handle": {{ product.handle | json }},
+      "collectionIds": {{ product.collections | map: 'id' | json }},
+      "country": {{ localization.country.iso_code | json }},
+      "renderedAt": {{ 'now' | date: '%s' | json }}
     }
   </script>
+  {%- assign deliverly_config = shop.metafields["$app"].deliverly_config -%}
+  {% if deliverly_config %}
+    <script type="application/json" data-deliverly-config>
+      {{ deliverly_config.value | json }}
+    </script>
+  {% endif %}
 {% endif %}
 {% render 'deliverly-eta' %}
 

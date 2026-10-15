@@ -1,3 +1,10 @@
+// Bundled by esbuild (pnpm build:storefront): the imports below are the
+// same rule-picking and date code the server uses, so both always agree.
+import { computeEstimate } from "../app/utils/compute-estimate";
+import { COUNTDOWN_TOKEN, formatCountdown } from "../app/utils/delivery-dates";
+import { selectRule } from "../app/utils/select-rule";
+import { parseStorefrontConfig } from "../app/utils/storefront-config";
+
 (function () {
   "use strict";
   if (window.__deliverlyEtaInit) return;
@@ -15,8 +22,10 @@
   // Product whose estimate is currently visible. Refreshes for it keep the
   // message on screen (no hide/show flash, no layout shift).
   var shownGid = null;
-  var COUNTDOWN_TOKEN = "{countdown}";
-  // Countdown deadline: Date.now() plus the server's secondsLeft, so only
+  // A device clock this far behind the page's render time is wrong; its
+  // dates would be too, so the server works the estimate out instead.
+  var CLOCK_SLACK_SECONDS = 300;
+  // Countdown deadline: Date.now() plus the estimate's secondsLeft, so only
   // elapsed time matters, not whether the device clock is right.
   // Date.now (not performance.now) keeps counting while the device sleeps.
   // null = no countdown running.
@@ -58,15 +67,22 @@
   function det(gid, id, handle) {
     return { productGid: gid, productId: id || gidNum(gid), handle: handle };
   }
-  function readCtx() {
-    var tags = document.querySelectorAll("[data-deliverly-product-context]");
+  function readJson(selector) {
+    var tags = document.querySelectorAll(selector);
+    var out = [];
     for (var i = 0; i < tags.length; i += 1) {
-      var d = null;
       try {
-        d = JSON.parse(tags[i].textContent || "");
+        out.push(JSON.parse(tags[i].textContent || ""));
       } catch (e) {
-        continue;
+        // Skip broken tags.
       }
+    }
+    return out;
+  }
+  function readCtx() {
+    var all = readJson("[data-deliverly-product-context]");
+    for (var i = 0; i < all.length; i += 1) {
+      var d = all[i];
       var gid = toGid(d && (d.productGid || d.productId));
       if (!gid) continue;
       var num = d && d.productId != null ? String(d.productId).trim() : gidNum(gid);
@@ -75,6 +91,35 @@
       return det(gid, num, h);
     }
     return null;
+  }
+  // Collections and render time of `gid`, from the page's Liquid. null when
+  // the page doesn't describe that product (e.g. after a client-side
+  // switch to another product): then only the server knows them.
+  function readLocalCtx(gid) {
+    var all = readJson("[data-deliverly-product-context]");
+    for (var i = 0; i < all.length; i += 1) {
+      var d = all[i];
+      if (!d || toGid(d.productGid || d.productId) !== gid || !Array.isArray(d.collectionIds)) continue;
+      var rendered = Number(d.renderedAt);
+      return {
+        collectionIds: d.collectionIds.map(String),
+        renderedAt: isFinite(rendered) && rendered > 0 ? rendered : null,
+      };
+    }
+    return null;
+  }
+  // Shopper's country (Shopify Markets), so country rules can apply.
+  function readCountry() {
+    var c = null;
+    var tag = document.querySelector("[data-deliverly-product-context]");
+    try {
+      c = tag && JSON.parse(tag.textContent || "").country;
+    } catch (e) {
+      c = null;
+    }
+    if (!c) c = window.Shopify && window.Shopify.country;
+    c = typeof c === "string" ? c.trim().toUpperCase() : "";
+    return /^[A-Z]{2}$/.test(c) ? c : null;
   }
   function urlHandle() {
     var m = /\/products\/([^/?#]+)/.exec(window.location.pathname || "");
@@ -118,14 +163,6 @@
   function datesEl(host) {
     return host ? host.querySelector("[data-deliverly-eta-dates]") : null;
   }
-  // Same output as formatCountdown in app/utils/delivery-dates.ts.
-  function formatCountdown(seconds) {
-    var total = Math.max(1, Math.ceil(seconds / 60));
-    var h = Math.floor(total / 60);
-    var m = total % 60;
-    if (h === 0) return m + "m";
-    return m === 0 ? h + "h" : h + "h " + m + "m";
-  }
   function stopCountdown() {
     if (countdownTimer) window.clearInterval(countdownTimer);
     countdownTimer = null;
@@ -137,7 +174,7 @@
     if (countdownEnd === null || !d) return stopCountdown();
     var left = (countdownEnd - Date.now()) / 1000;
     if (left <= 0) {
-      // Cutoff passed: show the normal sentence, then fetch the new dates.
+      // Cutoff passed: show the normal sentence, then work out the new dates.
       stopCountdown();
       d.textContent = plainMessage;
       if (cached.productGid && host) loadEta(host, cached.productGid);
@@ -213,14 +250,60 @@
     var host = etaHost();
     if (host) host.remove();
   }
+  // The estimate from the shop's config in the page, with no request.
+  // undefined = can't work it out here (no or invalid config, product not
+  // described by the page, wrong device clock): ask the server instead.
+  // { enabled: false } = the config has no rule for this product.
+  function localEstimate(gid) {
+    var configs = readJson("[data-deliverly-config]");
+    var config = null;
+    for (var i = 0; i < configs.length && !config; i += 1) config = parseStorefrontConfig(configs[i]);
+    var ctx = config && readLocalCtx(gid);
+    var productId = gidNum(gid);
+    if (!ctx || !productId) return undefined;
+    var now = Date.now();
+    if (ctx.renderedAt !== null && now / 1000 < ctx.renderedAt - CLOCK_SLACK_SECONDS) return undefined;
+    var rule = selectRule(config.rules, {
+      productId: productId,
+      collectionIds: ctx.collectionIds,
+      country: readCountry(),
+    });
+    if (!rule) return { enabled: false };
+    try {
+      var estimate = computeEstimate(rule, new Date(now), config.timezone);
+      return {
+        enabled: true,
+        message: estimate.message,
+        countdown: estimate.countdown,
+      };
+    } catch (e) {
+      return undefined;
+    }
+  }
+  function applyEstimate(host, gid, data) {
+    activeGid = null;
+    if (!host || !host.isConnected) return;
+    if (data && data.enabled === true && typeof data.message === "string" && data.message.trim()) {
+      stamp(host, cached);
+      showEstimate(host, data);
+      shownGid = gid;
+    } else hideEta();
+  }
   function loadEta(host, gid) {
     if (activeGid === gid) return;
+    var local = localEstimate(gid);
+    if (local !== undefined) {
+      dropFlight();
+      return applyEstimate(host, gid, local);
+    }
     var my = (etaSeq += 1);
     activeGid = gid;
     var refreshing = shownGid === gid;
     if (!refreshing) showLoading(host);
     if (typeof fetch === "undefined") return hideEta();
-    fetch(ETA_URL + "?productId=" + encodeURIComponent(gid), {
+    var country = readCountry();
+    var qs = "?productId=" + encodeURIComponent(gid) + (country ? "&country=" + country : "");
+    fetch(ETA_URL + qs, {
       cache: "no-store",
       credentials: "same-origin",
     })
@@ -230,14 +313,7 @@
       })
       .then(function (data) {
         if (my !== etaSeq || (cached.productGid || "") !== gid) return;
-        activeGid = null;
-        var h = etaHost();
-        if (!h || !h.isConnected) return;
-        if (data && data.enabled === true && typeof data.message === "string" && data.message.trim()) {
-          stamp(h, cached);
-          showEstimate(h, data);
-          shownGid = gid;
-        } else hideEta();
+        applyEstimate(etaHost(), gid, data);
       })
       .catch(function () {
         if (my !== etaSeq) return;

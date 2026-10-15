@@ -6,8 +6,12 @@ import type {
 } from "react-router";
 import { data, redirect, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
-import { createDeliveryRule } from "../services/deliveryRule.service.server";
+import {
+  createDeliveryRule,
+  getOverlapCandidates,
+} from "../services/deliveryRule.service.server";
 import { fetchShopTimeZone } from "../services/shopTimeZone.server";
+import { syncStorefrontConfig } from "../services/storefrontSync.server";
 import {
   parseRuleFormData,
   validateRuleInput,
@@ -22,14 +26,20 @@ import {
 } from "../components/rule-form";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-  return { timeZone: await fetchShopTimeZone(admin) };
+  const { admin, session } = await authenticate.admin(request);
+  const shop = (session as { shop?: string })?.shop;
+  const [timeZone, otherRules] = await Promise.all([
+    fetchShopTimeZone(admin),
+    shop ? getOverlapCandidates(shop) : Promise.resolve([]),
+  ]);
+  return { timeZone, otherRules };
 };
 
 const CREATE_INITIAL: RuleFormInitial = {
   name: "",
   type: "DEFAULT",
   targets: [],
+  countries: [],
   processingDays: "1",
   minDeliveryDays: "3",
   maxDeliveryDays: "5",
@@ -45,7 +55,7 @@ const CREATE_INITIAL: RuleFormInitial = {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = (session as { shop?: string })?.shop;
   if (!shop) {
     throw new Response("Unauthorized: missing shop", { status: 401 });
@@ -64,6 +74,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     await createDeliveryRule(shop, checked.value);
+    // A failed sync doesn't fail the save: the rules page shows a retry.
+    await syncStorefrontConfig(shop, admin);
     return redirect("/app/rules?notice=created");
   } catch (error) {
     console.error("[app.rules.new] create failed", { shop, error });
@@ -86,11 +98,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function NewEtaRulePage() {
-  const { timeZone } = useLoaderData<typeof loader>();
+  const { timeZone, otherRules } = useLoaderData<typeof loader>();
   return (
     <RuleForm
       initial={CREATE_INITIAL}
       timeZone={timeZone}
+      saved={null}
+      otherRules={otherRules}
       labels={{
         title: "Create ETA rule",
         subtitle:

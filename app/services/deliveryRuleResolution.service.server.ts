@@ -1,9 +1,11 @@
 import type { DeliveryRule } from "@prisma/client";
 import {
-  findEnabledCollectionRule,
-  findEnabledDefaultRule,
-  findEnabledProductRule,
+  findEnabledCollectionRules,
+  findEnabledDefaultRules,
+  findEnabledProductRules,
 } from "../repositories/deliveryRule.repository.server";
+import { toCountryCode } from "../utils/countries";
+import { pickRule } from "../utils/pick-rule";
 import {
   isValidShopDomain,
   normalizeShop,
@@ -13,6 +15,8 @@ export interface ResolveDeliveryRuleInput {
   shop: string;
   productId: string;
   collectionIds?: string[];
+  /** Shopper's country code from the storefront; unknown = none. */
+  country?: string | null;
 }
 
 /**
@@ -21,11 +25,13 @@ export interface ResolveDeliveryRuleInput {
  * Precedence (first match wins, disabled rules never participate):
  *   1. PRODUCT    — enabled rule targeting this exact product GID
  *   2. COLLECTION — enabled rule targeting any of the product's
- *                   collection GIDs (newest wins on multiple matches)
+ *                   collection GIDs
  *   3. DEFAULT    — the shop's enabled store-wide rule
  *   4. null       — nothing enabled applies
+ * Within each level a rule limited to the shopper's country beats an
+ * all-countries rule; rules limited to other countries never apply.
  *
- * Determinism: within one level, newest createdAt wins, id breaks
+ * Determinism: among equal candidates, newest createdAt wins, id breaks
  * millisecond ties. There is deliberately no merchant-facing priority
  * number — the hierarchy above IS the priority.
  *
@@ -35,7 +41,7 @@ export interface ResolveDeliveryRuleInput {
  *
  * Efficiency: at most one indexed query per level with early exit
  * (product hit = 1 query, collection hit = 2, default/null = 3).
- * No includes, no loops — no N+1 by construction.
+ * No includes — no N+1 by construction.
  */
 export async function resolveDeliveryRule(
   input: ResolveDeliveryRuleInput,
@@ -60,19 +66,21 @@ export async function resolveDeliveryRule(
       )
     : [];
 
-  const productRule = await findEnabledProductRule(
-    normalizedShop,
-    productId,
+  const country = toCountryCode(input.country);
+
+  const productRule = pickRule(
+    await findEnabledProductRules(normalizedShop, productId),
+    country,
   );
   if (productRule) return productRule;
 
   if (collectionIds.length > 0) {
-    const collectionRule = await findEnabledCollectionRule(
-      normalizedShop,
-      collectionIds,
+    const collectionRule = pickRule(
+      await findEnabledCollectionRules(normalizedShop, collectionIds),
+      country,
     );
     if (collectionRule) return collectionRule;
   }
 
-  return findEnabledDefaultRule(normalizedShop);
+  return pickRule(await findEnabledDefaultRules(normalizedShop), country);
 }

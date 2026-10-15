@@ -108,7 +108,7 @@ The app runs on Cloudflare Workers (`wrangler.jsonc`, entry point `worker/app.ts
    pnpm exec wrangler secret put SCOPES            # read_products,write_app_proxy,read_themes
    ```
 
-   `SHOPIFY_APP_HANDLE` (app-embed status detection) and `SHOP_CUSTOM_DOMAIN` are optional.
+   `SHOPIFY_APP_HANDLE` (app-embed status detection) and `SHOP_CUSTOM_DOMAIN` are optional. `BACKFILL_TOKEN` (32+ random characters) turns on the storefront config backfill in step 5; leave it unset otherwise.
 
 2. Apply pending D1 migrations to the Cloudflare database:
 
@@ -116,7 +116,9 @@ The app runs on Cloudflare Workers (`wrangler.jsonc`, entry point `worker/app.ts
    pnpm db:migrate:remote
    ```
 
-   Migrations are SQL files in `prisma/d1-migrations`. After changing `prisma/schema.prisma`, generate the next one with `pnpm exec prisma migrate diff --from-local-d1 --to-schema-datamodel prisma/schema.prisma --script` and save it as the next numbered file.
+   Migrations are SQL files in `prisma/d1-migrations`. After changing `prisma/schema.prisma`, generate the next one with `pnpm exec prisma migrate diff --from-url "file:$(ls .wrangler/state/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v metadata)" --to-schema-datamodel prisma/schema.prisma --script` and save it as the next numbered file. Then run `pnpm prisma generate` and restart `pnpm dev` (delete `node_modules/.vite` if the dev server still reports an unknown field or model).
+
+   Apply migrations **before** deploying the Worker: the new code reads the new columns and tables.
 
 3. Build and deploy the Worker:
 
@@ -124,7 +126,16 @@ The app runs on Cloudflare Workers (`wrangler.jsonc`, entry point `worker/app.ts
    pnpm deploy:worker
    ```
 
-4. Put the Worker URL in `shopify.app.toml` (`application_url` and `[auth] redirect_urls`), then run `pnpm deploy` to release the app configuration and theme extension.
+4. Put the Worker URL in `shopify.app.toml` (`application_url` and `[auth] redirect_urls`), then run `pnpm deploy` to release the app configuration (including the `deliverly_config` metafield definition and the `shop/update` webhook) and theme extension.
+
+5. After the first release with the storefront config, or after any change to its format, write it for every installed shop. Shops also get it on their next admin visit, so this only speeds things up:
+
+   ```bash
+   curl -X POST -H "Authorization: Bearer $BACKFILL_TOKEN" \
+     "https://<worker>/internal/storefront-backfill?limit=20"
+   ```
+
+   Repeat with `&after=<next>` from the response until `next` is `null`.
 
 ## Merchant Workflow
 
@@ -188,16 +199,21 @@ Stores:
 - Processing, minimum delivery, and maximum delivery days
 - Serialized excluded weekdays
 - Structured custom message settings
+- Countries (`"DE,FR"`, sorted ISO codes; empty = all countries)
 - Enabled state
 - Creation and update timestamps
 
-`defaultShopKey` has a unique constraint so each shop can have only one store-wide default rule.
+`defaultShopKey` has a unique constraint so each shop can have only one store-wide default rule for all countries. Default rules limited to countries aren't limited.
 
 ### `RuleTarget`
 
 Associates a delivery rule with a Shopify Product or Collection GID. Targets are deleted automatically when their parent rule is deleted. Composite uniqueness prevents duplicate targets inside one rule.
 
 All rule reads and mutations are scoped to the authenticated shop.
+
+### `StorefrontSync`
+
+One row per shop: when the storefront config was last requested and last written (`requestedAt`, `syncedAt`), the time zone it was written with, and the last error. The admin shows a banner with a retry while `syncedAt` is missing or older than `requestedAt`.
 
 ## Delivery-Date Calculation
 
@@ -226,24 +242,30 @@ Only enabled rules participate. The first applicable rule wins:
 2. Collection rule targeting one of the product's collections
 3. Store-wide default rule
 
-When multiple rules match at one level, the newest rule wins, with the rule ID used as a deterministic tie-breaker. If no rule applies, the storefront widget remains hidden.
+Within each level, a rule limited to the shopper's country beats a rule for all countries; rules limited to other countries never apply. The shopper's country is the one Shopify Markets assigns (`localization.country`). When multiple rules match at one level, the newest rule wins, with the rule ID used as a deterministic tie-breaker. If no rule applies, the storefront widget remains hidden.
+
+The same code (`app/utils/select-rule.ts`, `app/utils/compute-estimate.ts`) runs on the server and in the storefront widget.
 
 ## Storefront Integration
 
-The `deliverly-eta` Theme App Extension provides the **Estimated Delivery Date** App Embed and restricts it to product templates. Liquid emits the current product identity as inert JSON. The extension then requests:
+The `deliverly-eta` Theme App Extension provides the **Estimated Delivery Date** App Embed and restricts it to product templates.
+
+**Storefront config.** Every change to a shop's rules (create, edit, toggle, delete), every install and every shop time zone change (`shop/update` webhook) rebuilds the shop's enabled rules from D1 into one app-owned JSON shop metafield, `$app` / `deliverly_config` (`app/services/storefrontSync.server.ts`). Writes use `compareDigest`, so a slower, older sync can never overwrite newer rules. D1 stays the source of truth.
+
+**On product pages** Liquid prints, as inert JSON:
+
+- the config (`shop.metafields["$app"].deliverly_config`);
+- the product ID, its collection IDs (`product.collections`, Online Store collections only), the shopper's country and the render time.
+
+The widget picks the rule and works out the dates in the browser, in the shop's time zone, with **no request to our server**. It falls back to the App Proxy only when the config is missing or invalid, when the page doesn't describe the product, or when the device clock is more than 5 minutes behind the page's render time:
 
 ```text
-GET /apps/delivery-estimate?productId=gid://shopify/Product/{id}
+GET /apps/delivery-estimate?productId=gid://shopify/Product/{id}&country=XX
 ```
 
-Shopify signs and forwards the request to `/api/estimate`. The endpoint validates the request, gets trusted product and shop context, resolves the rule, and returns:
+Shopify signs and forwards that request to `/api/estimate`, which validates it, loads trusted product and shop context, resolves the rule and returns `enabled`, `message`, `minDate`, `maxDate` and `countdown`.
 
-- `enabled`
-- `message`
-- `minDate`
-- `maxDate`
-
-The extension does not calculate dates or receive Admin API credentials. It disables browser caching, refreshes when the storefront regains focus, and renders only when an active rule applies. Its styling inherits the theme and wraps safely on narrow screens.
+The widget renders only when an active rule applies, refreshes when the storefront regains focus, and inherits the theme's styling.
 
 ### App Proxy URL
 
@@ -287,10 +309,12 @@ The current source passes Prisma validation and generation, PostgreSQL migration
 - Product collection resolution pages through all of a product's collections, 250 at a time, up to 2,500.
 - Theme placement uses common product-price and add-to-cart selectors, with a product-area fallback.
 - The storefront script uses the fixed App Proxy path `/apps/delivery-estimate`; merchants must not customize the App Proxy URL (see [App Proxy URL](#app-proxy-url)).
-- Country-specific estimates, holidays, blackout dates, and storefront color controls are not implemented.
-- PostgreSQL is required; SQLite is no longer configured.
+- Holidays, blackout dates, and storefront color controls are not implemented.
+- Country rules use the country Shopify Markets assigns. On a store without a market for the shopper's country, that is the store's primary market country.
+- The widget works out dates with the device clock. A clock that's behind is caught (the server answers instead); one that's ahead isn't.
+- Collection rules on the storefront only see collections published to the Online Store.
+- The storefront widget is about 14 KB raw / 5.4 KB compressed, above Theme Check's 10,000-byte suggestion (not enforced).
 - Production deployment requires real application and OAuth redirect URLs in `shopify.app.toml`.
-- Automated calculation tests are not included because they are an optional bonus requirement.
 
 ## Screenshots
 

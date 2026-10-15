@@ -11,6 +11,15 @@ scopes = "read_products,write_app_proxy,read_themes"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
+# Storefront rule config, rebuilt from D1 on every rule change. Read by
+# the app embed as shop.metafields["$app"].deliverly_config.
+[shop.metafields.app.deliverly_config]
+type = "json"
+name = "Deliverly config"
+description = "Delivery rules for the storefront widget. Managed by Deliverly."
+access.admin = "merchant_read"
+access.storefront = "public_read"
+
 [app_proxy]
 url = "/api/estimate"
 prefix = "apps"
@@ -26,6 +35,10 @@ api_version = "2026-07"
   [[webhooks.subscriptions]]
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/update"
+  topics = [ "shop/update" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/compliance"

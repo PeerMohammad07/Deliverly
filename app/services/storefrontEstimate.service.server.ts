@@ -1,13 +1,5 @@
 import { resolveDeliveryRule } from "./deliveryRuleResolution.service.server";
-import {
-  calculateDeliveryRange,
-  getZonedNow,
-  parseExcludedDays,
-  renderCountdownMessage,
-  renderStoredMessage,
-  resolveOrderStart,
-  toDateOnlyString,
-} from "../utils/delivery-dates";
+import { computeEstimate } from "../utils/compute-estimate";
 import { isProductGid } from "../validators/deliveryRule.validator";
 import {
   isValidShopDomain,
@@ -184,13 +176,15 @@ export async function fetchProductContext(
 export async function getDeliveryEstimate(input: {
   shop: string;
   productId: string;
+  /** Shopper's country code from the storefront; null = unknown. */
+  country?: string | null;
   admin?: StorefrontAdminClient | null;
   /** KV cache for the Shopify lookups; null skips caching. */
   cache?: ProductContextStore | null;
   /** Lets cache writes finish after the response (ctx.waitUntil). */
   waitUntil?: (promise: Promise<unknown>) => void;
 }): Promise<EstimateResult> {
-  const { shop, productId, admin, cache, waitUntil } = input;
+  const { shop, productId, country, admin, cache, waitUntil } = input;
   if (!shop || typeof shop !== "string") throw new Error("Shop is required");
   const normalizedShop = normalizeShop(shop);
   if (!isValidShopDomain(normalizedShop)) {
@@ -227,37 +221,9 @@ export async function getDeliveryEstimate(input: {
     shop: normalizedShop,
     productId,
     collectionIds,
+    country,
   });
   if (!rule) return DISABLED_ESTIMATE;
 
-  const excludedDays = parseExcludedDays(rule.excludedDays);
-  const start = resolveOrderStart({
-    now: getZonedNow(new Date(), timeZone),
-    cutoffMinutes: rule.cutoffMinutes,
-    excludedDays,
-  });
-  const { minDate, maxDate } = calculateDeliveryRange({
-    from: start.from,
-    processingDays: rule.processingDays,
-    minShippingDays: rule.minDeliveryDays,
-    maxShippingDays: rule.maxDeliveryDays,
-    excludedDays,
-  });
-
-  const countdownMessage =
-    start.secondsToCutoff !== null
-      ? renderCountdownMessage(rule.customMessage, minDate, maxDate)
-      : null;
-  const countdown =
-    countdownMessage !== null && start.secondsToCutoff !== null
-      ? { secondsLeft: start.secondsToCutoff, message: countdownMessage }
-      : null;
-
-  return {
-    enabled: true,
-    message: renderStoredMessage(rule.customMessage, minDate, maxDate),
-    minDate: toDateOnlyString(minDate),
-    maxDate: toDateOnlyString(maxDate),
-    countdown,
-  };
+  return { enabled: true, ...computeEstimate(rule, new Date(), timeZone) };
 }

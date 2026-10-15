@@ -15,6 +15,8 @@ import {
 } from "../services/appEmbedStatus.service.server";
 import { OverviewCards } from "../components/dashboard/overview-cards";
 import { RecentRules } from "../components/dashboard/recent-rules";
+import { StorefrontSyncBanner } from "../components/storefront-sync-banner";
+import { getStorefrontSyncStatus } from "../services/storefrontSync.server";
 import { SetupGuide } from "../components/dashboard/setup-guide";
 import { StorefrontDisplay } from "../components/dashboard/storefront-display";
 import { RulePriority } from "../components/dashboard/rule-priority";
@@ -94,6 +96,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         name: display.name,
         kind: display.displayTypeLabel,
         targets: display.displayTargets,
+        countries: display.displayCountries,
         eta: display.displayEta,
         enabled: display.enabled,
       };
@@ -108,6 +111,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       },
       recent,
       shop,
+      syncStatus: await getStorefrontSyncStatus(shop),
       appEmbed: {
         enabled: await readAppEmbedEnabled(admin, shop),
         editorUrl: buildThemeEditorUrl(shop, process.env.SHOPIFY_API_KEY ?? ""),
@@ -122,7 +126,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function Dashboard() {
-  const { stats, recent, shop, appEmbed } = useLoaderData<typeof loader>();
+  const { stats, recent, shop, appEmbed, syncStatus } =
+    useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const navigate = useNavigate();
   const navigation = useNavigation();
@@ -212,6 +217,8 @@ export default function Dashboard() {
         <s-paragraph color="subdued">
           Your delivery estimates and storefront setup at a glance.
         </s-paragraph>
+
+        <StorefrontSyncBanner status={syncStatus} />
 
         <SetupGuide
           hidden={hidden}

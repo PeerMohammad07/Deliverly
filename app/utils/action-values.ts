@@ -8,6 +8,7 @@ const ACTION_VALUE_DEFAULTS: Record<string, string> = {
   name: "",
   type: "DEFAULT",
   targetIds: "",
+  countries: "",
   processingDays: "",
   minDeliveryDays: "",
   maxDeliveryDays: "",

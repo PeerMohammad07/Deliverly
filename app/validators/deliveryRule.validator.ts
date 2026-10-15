@@ -4,6 +4,7 @@
  * Server must always re-validate (never trust client alone).
  */
 
+import { parseCountries, toCountryCode } from "../utils/countries";
 import {
   COUNTDOWN_TOKEN,
   DEFAULT_MESSAGE_PARTS,
@@ -32,6 +33,8 @@ export interface RuleFormInput {
   countdownPrefix: string;
   enabled: boolean;
   targetIds: string[];
+  /** ISO country codes the rule is limited to; [] = all countries. */
+  countries: string[];
 }
 
 export type RuleFormErrors = Partial<Record<keyof RuleFormInput, string>>;
@@ -43,8 +46,9 @@ const MAX_SUFFIX_LENGTH = 200;
 const MAX_COUNTDOWN_PREFIX_LENGTH = 120;
 export const MAX_TARGETS = 50;
 
-const PRODUCT_GID_PATTERN = /^gid:\/\/shopify\/Product\/\S+$/;
-const COLLECTION_GID_PATTERN = /^gid:\/\/shopify\/Collection\/\S+$/;
+// Shopify resource IDs are numeric; the length cap keeps junk short.
+const PRODUCT_GID_PATTERN = /^gid:\/\/shopify\/Product\/\d{1,20}$/;
+const COLLECTION_GID_PATTERN = /^gid:\/\/shopify\/Collection\/\d{1,20}$/;
 
 export function isProductGid(value: unknown): value is string {
   return typeof value === "string" && PRODUCT_GID_PATTERN.test(value);
@@ -86,7 +90,7 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
   if (!name) {
     errors.name = "Give your rule a name, e.g. Standard US.";
   } else if (name.length > MAX_NAME_LENGTH) {
-    errors.name = `Keep the name under ${MAX_NAME_LENGTH} characters.`;
+    errors.name = `Keep the name to ${MAX_NAME_LENGTH} characters or fewer.`;
   }
 
   const type = input.type;
@@ -153,19 +157,19 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
   const msgPrefix =
     typeof input.msgPrefix === "string" ? input.msgPrefix.trim() : "";
   if (msgPrefix.length > MAX_PREFIX_LENGTH) {
-    errors.msgPrefix = `Keep the opening text under ${MAX_PREFIX_LENGTH} characters.`;
+    errors.msgPrefix = `Keep the opening text to ${MAX_PREFIX_LENGTH} characters or fewer.`;
   }
 
   const msgSeparator =
     typeof input.msgSeparator === "string" ? input.msgSeparator : "";
   if (msgSeparator.length > MAX_SEPARATOR_LENGTH) {
-    errors.msgSeparator = `Keep the separator under ${MAX_SEPARATOR_LENGTH} characters.`;
+    errors.msgSeparator = `Keep the separator to ${MAX_SEPARATOR_LENGTH} characters or fewer.`;
   }
 
   const msgSuffix =
     typeof input.msgSuffix === "string" ? input.msgSuffix.trim() : "";
   if (msgSuffix.length > MAX_SUFFIX_LENGTH) {
-    errors.msgSuffix = `Keep the closing text under ${MAX_SUFFIX_LENGTH} characters.`;
+    errors.msgSuffix = `Keep the closing text to ${MAX_SUFFIX_LENGTH} characters or fewer.`;
   }
 
   const dateStyle = isStorefrontDateStyle(input.dateStyle)
@@ -195,7 +199,7 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
     if (!countdownPrefix.includes(COUNTDOWN_TOKEN)) {
       errors.countdownPrefix = `Include ${COUNTDOWN_TOKEN} where the time left should appear.`;
     } else if (countdownPrefix.length > MAX_COUNTDOWN_PREFIX_LENGTH) {
-      errors.countdownPrefix = `Keep this text under ${MAX_COUNTDOWN_PREFIX_LENGTH} characters.`;
+      errors.countdownPrefix = `Keep this text to ${MAX_COUNTDOWN_PREFIX_LENGTH} characters or fewer.`;
     }
   }
 
@@ -230,6 +234,18 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
     }
   }
 
+  // Missing = all countries. The picker only offers known codes, so an
+  // unknown one is tampered input and is rejected rather than dropped.
+  const rawCountries = Array.isArray(input.countries) ? input.countries : [];
+  if (
+    input.countries !== undefined &&
+    (!Array.isArray(input.countries) ||
+      rawCountries.some((c) => toCountryCode(c) === null))
+  ) {
+    errors.countries = "Choose countries from the list.";
+  }
+  const countries = parseCountries(rawCountries);
+
   if (input.enabled !== undefined && typeof input.enabled !== "boolean") {
     errors.enabled = "Invalid rule status.";
   }
@@ -260,6 +276,7 @@ export function validateRuleInput(input: Partial<RuleFormInput>): {
         : DEFAULT_MESSAGE_PARTS.countdownPrefix,
       enabled,
       targetIds: type === "DEFAULT" ? [] : targetIds,
+      countries,
     },
   };
 }
@@ -301,6 +318,10 @@ export function parseRuleFormData(formData: FormData): Partial<RuleFormInput> {
       get("enabled") === "1",
     targetIds: targetRaw
       .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+    countries: get("countries")
+      .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
   };
