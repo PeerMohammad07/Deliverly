@@ -32,10 +32,25 @@
     overflow-wrap: anywhere;
     word-break: break-word;
   }
+  /* Theme editor only: why there's no estimate here. Muted, and without
+     the "Estimated delivery" label, so it can't pass for a real date. */
+  .deliverly-eta[data-deliverly-eta-state="note"] .deliverly-eta__label {
+    display: none;
+  }
+  .deliverly-eta[data-deliverly-eta-state="note"] .deliverly-eta__dates {
+    font-weight: 400;
+    opacity: 0.7;
+  }
 </style>
 
 <template data-deliverly-eta-template>
-  <div class="deliverly-eta" data-deliverly-eta-state="loading" hidden>
+  <div
+    class="deliverly-eta"
+    data-deliverly-eta-state="loading"
+    data-editor-loading="Loading delivery estimate…"
+    data-editor-none="Deliverly: no active rule for this product, so shoppers won’t see a delivery estimate here."
+    hidden
+  >
     <div class="deliverly-eta__row">
       <div>
         <span class="deliverly-eta__label">Estimated delivery</span>

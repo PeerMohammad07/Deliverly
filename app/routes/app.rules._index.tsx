@@ -89,6 +89,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         cutoffMinutes: display.cutoffMinutes,
         kind: display.displayTypeLabel,
         isDefault: display.type === "DEFAULT",
+        // The shop's one all-products, all-countries rule: turning it off
+        // leaves products without their own rule with no estimate.
+        isFallback: display.type === "DEFAULT" && display.countries === "",
         excludedDays: [...parseExcludedDays(display.excludedDays)],
         enabled: display.enabled,
       };
@@ -239,8 +242,8 @@ function RulesTable({
   loading: boolean;
   hasPreviousPage: boolean;
   hasNextPage: boolean;
-  onToggle: (rule: Pick<RuleRow, "id">) => void;
-  onDelete: (rule: Pick<RuleRow, "id" | "name">) => void;
+  onToggle: (rule: RuleRow) => void;
+  onDelete: (rule: RuleRow) => void;
   onQueryChange: (value: string) => void;
   onStatusChange: (value: RuleStatus) => void;
   onViewAll: () => void;
@@ -434,10 +437,10 @@ export default function EtaRulesPage() {
     useRuleRowActions();
   const navigate = useNavigate();
   const navigation = useNavigation();
-  const [pendingDelete, setPendingDelete] = useState<Pick<
-    RuleRow,
-    "id" | "name"
-  > | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<RuleRow | null>(null);
+  const [pendingDeactivate, setPendingDeactivate] = useState<RuleRow | null>(
+    null,
+  );
   const [query, setQuery] = useState(loadedQuery);
   const shownNotice = useRef<string | null>(null);
   const hasRules = counts.all > 0;
@@ -472,8 +475,24 @@ export default function EtaRulesPage() {
     return () => window.clearTimeout(timeout);
   }, [loadedQuery, navigate, query, status]);
 
-  function toggleRule(rule: Pick<RuleRow, "id">) {
+  function toggleRule(rule: RuleRow) {
+    // Deactivating the active default needs a confirmation first.
+    if (rule.enabled && rule.isFallback) {
+      setPendingDeactivate(rule);
+      shopify.modal.show("deactivate-default-modal").catch((error) => {
+        console.error("[app.rules] deactivate modal failed", error);
+        showError("Couldn’t open the confirmation. Try again.");
+      });
+      return;
+    }
     submitIntent("toggle", { id: rule.id });
+  }
+
+  function confirmDeactivate() {
+    if (!pendingDeactivate) return;
+    const id = pendingDeactivate.id;
+    setPendingDeactivate(null);
+    submitIntent("toggle", { id });
   }
 
   function confirmDelete() {
@@ -483,7 +502,7 @@ export default function EtaRulesPage() {
     submitIntent("delete", { id });
   }
 
-  function openDeleteModal(rule: Pick<RuleRow, "id" | "name">) {
+  function openDeleteModal(rule: RuleRow) {
     setPendingDelete(rule);
     shopify.modal.show("delete-rule-modal").catch((error) => {
       console.error("[app.rules] delete modal failed", error);
@@ -565,8 +584,9 @@ export default function EtaRulesPage() {
         }
       >
         <s-paragraph>
-          This removes the rule and its delivery estimates from your store. This
-          can’t be undone.
+          {pendingDelete?.enabled && pendingDelete.isFallback
+            ? "This is your default rule. Products without their own rule will stop showing a delivery estimate. This can’t be undone."
+            : "This removes the rule and its delivery estimates from your store. This can’t be undone."}
         </s-paragraph>
         <s-button
           slot="primary-action"
@@ -581,6 +601,33 @@ export default function EtaRulesPage() {
         <s-button
           slot="secondary-actions"
           commandFor="delete-rule-modal"
+          command="--hide"
+        >
+          Cancel
+        </s-button>
+      </s-modal>
+
+      <s-modal
+        id="deactivate-default-modal"
+        heading="Deactivate your default rule?"
+      >
+        <s-paragraph>
+          Products without their own rule will stop showing a delivery
+          estimate on your store.
+        </s-paragraph>
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          tone="critical"
+          commandFor="deactivate-default-modal"
+          command="--hide"
+          onClick={confirmDeactivate}
+        >
+          Deactivate
+        </s-button>
+        <s-button
+          slot="secondary-actions"
+          commandFor="deactivate-default-modal"
           command="--hide"
         >
           Cancel

@@ -15,7 +15,6 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
   var ETA_URL = "/apps/delivery-estimate";
   var GID_RE = /^gid:\/\/shopify\/Product\/\S+$/;
   var NUM_RE = /^\d+$/;
-  var PREVIEW = "Oct 3 – Oct 7";
   var cached = { productGid: null, productId: null, handle: null };
   var etaSeq = 0;
   var activeGid = null;
@@ -31,6 +30,12 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
   var IP_TTL_MS = 24 * 60 * 60 * 1000;
   // Past this, the estimate uses the Markets country instead of waiting.
   var IP_TIMEOUT_MS = 1500;
+  // True while the widget should be on the page. Themes re-render the
+  // product area on variant change and drop it; then it's put back.
+  var hostWanted = false;
+  var reattachTimer = null;
+  // Safety cap, in case a theme keeps removing it in a loop.
+  var reattachesLeft = 30;
   // Countdown deadline: Date.now() plus the estimate's secondsLeft, so only
   // elapsed time matters, not whether the device clock is right.
   // Date.now (not performance.now) keeps counting while the device sleeps.
@@ -292,10 +297,20 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
     var d = datesEl(host);
     if (d) d.textContent = msg;
   }
+  // Theme editor only: a muted note instead of an estimate ("loading" or
+  // "none"). Never sample dates: the preview must match the storefront.
+  function showEditorNote(host, kind) {
+    var el = inner(host);
+    var d = datesEl(host);
+    if (!el || !d) return;
+    el.setAttribute("data-deliverly-eta-state", "note");
+    el.removeAttribute("hidden");
+    d.textContent = el.getAttribute(kind === "none" ? "data-editor-none" : "data-editor-loading") || "";
+  }
   function showLoading(host) {
     shownGid = null;
     stopCountdown();
-    if (isEditor()) return showMessage(host, PREVIEW);
+    if (isEditor()) return showEditorNote(host, "loading");
     var el = inner(host);
     if (el) {
       el.setAttribute("data-deliverly-eta-state", "loading");
@@ -310,13 +325,18 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
   }
   function hideEta() {
     if (isEditor()) {
+      // On the storefront the widget goes away; in the editor, say why.
+      dropFlight();
+      shownGid = null;
+      stopCountdown();
       var preview = etaHost();
-      if (preview) showMessage(preview, PREVIEW);
+      if (preview) showEditorNote(preview, "none");
       return;
     }
     dropFlight();
     shownGid = null;
     stopCountdown();
+    hostWanted = false;
     var host = etaHost();
     if (host) host.remove();
   }
@@ -458,7 +478,27 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
     else if (anchor.position === "before")
       anchor.node.parentNode.insertBefore(node, anchor.node);
     else anchor.node.appendChild(node);
+    hostWanted = true;
     return true;
+  }
+  // Variant switches (and quick views) make many themes replace the
+  // product area's HTML, which removes the widget with it. Put it back
+  // once the theme is done; the estimate is worked out again locally.
+  function watchForRemoval() {
+    if (typeof MutationObserver === "undefined" || !document.body) return;
+    new MutationObserver(function () {
+      if (!hostWanted || reattachTimer || reattachesLeft <= 0) return;
+      var host = etaHost();
+      if (host && host.isConnected) return;
+      reattachTimer = window.setTimeout(function () {
+        reattachTimer = null;
+        var current = etaHost();
+        if (!hostWanted || (current && current.isConnected)) return;
+        reattachesLeft -= 1;
+        dropFlight();
+        syncEta();
+      }, 50);
+    }).observe(document.body, { childList: true, subtree: true });
   }
   function syncEta() {
     cached = detect();
@@ -473,8 +513,7 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
     }
     host = etaHost();
     if (!host) return;
-    if (editor) showMessage(host, PREVIEW);
-    if (!gid) return;
+    if (!gid) return editor ? showEditorNote(host, "none") : undefined;
     // Country rules need the shopper's country first (IP lookup on the
     // first visit, then remembered).
     if (country === undefined) return resolveCountry(syncEta);
@@ -495,9 +534,12 @@ import { parseStorefrontConfig } from "../app/utils/storefront-config";
   }
 
   patchHistory();
-  if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", syncEta);
-  else syncEta();
+  function start() {
+    syncEta();
+    watchForRemoval();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
   ["shopify:section:load", "shopify:section:select", "shopify:section:deselect", "shopify:section:reorder"].forEach(
     function (ev) {
       document.addEventListener(ev, syncEta);

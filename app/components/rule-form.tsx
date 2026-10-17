@@ -523,8 +523,14 @@ export function RuleForm({
     try {
       const result = await resourcePicker({
         type: requestedKind === "COLLECTION" ? "collection" : "product",
+        // Rules target whole products; hiding variants stops merchants from
+        // picking one variant and expecting a variant-only rule.
+        ...(requestedKind === "COLLECTION" ? {} : { filter: { variants: false } }),
         multiple: MAX_PICKER_TARGETS,
-        selectionIds: selectedTargets.map((t) => t.id),
+        // Objects, not bare ID strings: with strings the picker shows the
+        // current picks as ticked but returns only the new ones, so saving
+        // dropped products already on the rule.
+        selectionIds: selectedTargets.map((t) => ({ id: t.id })),
         action: "select",
       });
       // Merchant switched kind mid-pick: drop the stale result so
